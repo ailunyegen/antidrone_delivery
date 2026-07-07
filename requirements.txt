@@ -1,0 +1,21 @@
+# 反无人机行动方案智能生成系统 - Python依赖清单
+
+# 核心依赖
+openai>=1.0.0
+streamlit>=1.28.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# 军事研究仿真引擎依赖
+torch>=2.0.0
+faiss-cpu>=1.7.0
+sentence-transformers>=2.2.0
+
+# 编译依赖（仅在需要重新编译时安装）
+cython>=3.0.0
+setuptools>=68.0.0
+wheel>=0.41.0
+
+# 备选编译工具（可选）
+# nuitka>=1.0.0
+# ordered-set>=4.0.0

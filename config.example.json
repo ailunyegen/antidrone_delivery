@@ -1,0 +1,9 @@
+{
+    "provider": "deepseek",
+    "api_key": "在此填入你的API-Key",
+    "model": "deepseek-chat",
+    "base_url": "",
+    "temperature": 0.7,
+    "max_tokens": 8000,
+    "comment": "请将api_key替换为你的实际API密钥。provider可选: deepseek, openai, qwen, zhipu, moonshot, siliconflow, custom。base_url留空则使用服务商默认公网地址。"
+}
