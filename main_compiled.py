@@ -41,9 +41,6 @@ def build_constraints_from_app_inputs(hard_constraints_text: str = "", soft_cons
 
     return hard, soft
 
-
-
-
 import argparse
 import json
 import os
@@ -92,7 +89,6 @@ def load_config(config_path: str = "config.json") -> dict:
         sys.exit(1)
     return cfg
 
-
 def init_client(cfg: dict):
     """初始化云端 LLM 客户端。"""
     # 使用导入的CloudLLMClient类
@@ -104,7 +100,6 @@ def init_client(cfg: dict):
         temperature=cfg.get("temperature", 0.7),
         max_tokens=cfg.get("max_tokens", 8000),
     )
-
 
 def get_kill_chain_generation_prompt(
     mission_objective: str,
@@ -147,43 +142,198 @@ def get_kill_chain_generation_prompt(
         "6. 风险评估与应对措施\n"
     )
 
+_equipment_library_cache = None
 
-def build_plan_json(
+def _load_equipment_library():
+    """从 equipment_library.json 加载装备库（带内存缓存）。"""
+    global _equipment_library_cache
+    if _equipment_library_cache is not None:
+        return _equipment_library_cache
+    import json as _json
+    _lib_path = Path(__file__).resolve().parent / "equipment_library.json"
+    if not _lib_path.exists():
+        _equipment_library_cache = []
+        return []
+    with _lib_path.open("r", encoding="utf-8") as _f:
+        _equipment_library_cache = _json.load(_f).get("equipment", [])
+    return _equipment_library_cache
+
+
+def _match_equipment(asset_line: str, library: list) -> dict | None:
+    """在装备库中匹配资产行，返回装备条目或 None。
+    支持两种格式: '装备名 数量' 和 '-位置 装备名(参数...)'
+    """
+    line = asset_line.strip().lstrip('-').strip()
+    
+    # 提取纯装备名: 取 '(' 前的内容，去除型号/坐标等参数
+    if '(' in line:
+        name_part = line.split('(')[0].strip()
+    else:
+        name_part = line.strip()
+    
+    # 去掉可能的数量后缀
+    import re as _re
+    name_part = _re.split(r'\s+\d+', name_part)[0].strip()
+    
+    # 在库中匹配: 先精确匹配 name，再匹配 aliases
+    for entry in library:
+        if entry["name"] in name_part or name_part in entry["name"]:
+            return entry
+    for entry in library:
+        for alias in entry.get("aliases", []):
+            if alias in asset_line or alias in name_part:
+                return entry
+    
+    # 回退: 提取可读短名作为 ID
+    short_name = name_part[:20].strip()
+    if short_name:
+        return {
+            "name": short_name,
+            "aliases": [],
+            "resourceId": short_name.replace(" ", "-")[:12],
+            "type": "探测",
+            "disposalCategory": 1,
+            "disposalSubcategory": 104,
+            "dispatchMode": 1,
+        }
+    return None
+
+
+def _classify_action(text: str, equipment: dict | None = None) -> tuple:
+    """根据装备库配置分类。优先使用装备预配置值，回退到文本关键词。"""
+    if equipment and equipment.get("disposalCategory"):
+        return (
+            equipment["disposalCategory"],
+            equipment["disposalSubcategory"],
+            equipment.get("dispatchMode", 2),
+        )
+    
+    # 文本关键词回退
+    if any(kw in text for kw in ["干扰", "压制", "电子对抗", "电磁"]):
+        if any(kw in text for kw in ["GNSS欺骗", "GPS欺骗", "导航欺骗"]): return (1, 102, 1)
+        if any(kw in text for kw in ["GNSS压制", "GPS压制", "导航压制"]): return (1, 101, 1)
+        if any(kw in text for kw in ["C2", "指挥链路", "数据链"]): return (1, 100, 2)
+        if any(kw in text for kw in ["遥控", "射频"]): return (1, 103, 1)
+        if any(kw in text for kw in ["雷达"]): return (1, 104, 2)
+        return (1, 103, 2)
+    if any(kw in text for kw in ["激光"]):
+        return (2, 200, 2) if any(kw in text for kw in ["远距离", "远程"]) else (2, 201, 1)
+    if any(kw in text for kw in ["微波", "HPM", "电磁脉冲"]): return (2, 202, 2)
+    if any(kw in text for kw in ["网捕"]): return (3, 300, 3)
+    if any(kw in text for kw in ["防空导弹", "导弹拦截", "HQ-", "红旗", "SAM"]): return (4, 401, 2)
+    if any(kw in text for kw in ["高射炮", "近防炮", "CIWS", "密集阵", "弹幕"]): return (4, 400, 1)
+    if any(kw in text for kw in ["拦截无人机", "撞击", "物理撞击", "蜂群对抗"]): return (4, 400, 2)
+    if any(kw in text for kw in ["协议劫持", "链路接管"]): return (5, 500, 3)
+    if any(kw in text for kw in ["雷达", "探测", "侦察", "搜索", "预警"]): return (1, 104, 1)
+    return (1, 103, 2)
+
+
+def build_structured_plan_json(
     mission_objective: str,
     situation_description: str,
     friendly_assets: str,
-    hard_constraints: list,
-    soft_constraints: list,
-    focus: str,
     plan_content: str,
-    client,
-    plan_id: str = "",
+    plan_name: str = "反无人机行动方案",
 ) -> dict:
-    """构建方案的 JSON 结构。"""
+    """按照 conversion_result.json 骨架构建结构化方案 JSON。
+    从 equipment_library.json 加载装备库，支持 assets.txt 新旧两种格式。
+    """
+    import re as _re
     from datetime import datetime, timezone, timedelta
+
+    library = _load_equipment_library()
+    NL = chr(10)
     tz = timezone(timedelta(hours=8))
+    now_ts = int(datetime.now(tz).timestamp() * 1000)
+
+    # ── 解析 assets.txt，匹配装备库（按 resourceId 去重）──
+    asset_lines = [l.strip() for l in friendly_assets.splitlines() if l.strip()]
+    matched_equipment = []
+    seen_rids = set()
+    for line in asset_lines:
+        entry = _match_equipment(line, library)
+        if entry and entry["resourceId"] not in seen_rids:
+            matched_equipment.append((entry, line))
+            seen_rids.add(entry["resourceId"])
+
+    # ── 从 LLM 方案文本中提取行动 ──
+    actions = []
+    sections = _re.split(NL + r'(?=\d+\.\s)', plan_content)
+    
+    for section in sections:
+        section = section.strip()
+        if not section:
+            continue
+        
+        found_in_section = []
+        for entry, line in matched_equipment:
+            # 检查装备名或别名是否出现在此章节
+            eq_name = entry["name"]
+            if eq_name in section:
+                found_in_section.append(entry)
+                continue
+            for alias in entry.get("aliases", []):
+                if alias in section and len(alias) > 2:
+                    found_in_section.append(entry)
+                    break
+        
+        # 每个章节最多收录 2 个行动，优先反制设备
+        detectors = [e for e in found_in_section if e.get("type") == "探测"]
+        counters = [e for e in found_in_section if e.get("type") == "反制"]
+        selected = (counters + detectors)[:2]
+        
+        for entry in selected:
+            cat, subcat, mode = _classify_action(section, entry)
+            actions.append({
+                "dispatchMode": mode,
+                "disposalCategory": cat,
+                "disposalSubcategory": subcat,
+                "estimatedDuration": 30,
+                "resourceId": entry["resourceId"],
+                "startTime": 0,
+            })
+
+    # ── Fallback: 方案文本中未出现的装备，按类型补充 ──
+    existing_rids = {a["resourceId"] for a in actions}
+    # 优先补充反制设备，避免重复
+    for entry, _ in matched_equipment:
+        if entry["resourceId"] not in existing_rids and entry.get("type") == "反制":
+            cat, subcat, mode = _classify_action("", entry)
+            actions.append({
+                "dispatchMode": mode,
+                "disposalCategory": cat,
+                "disposalSubcategory": subcat,
+                "estimatedDuration": 30,
+                "resourceId": entry["resourceId"],
+                "startTime": 0,
+            })
+            existing_rids.add(entry["resourceId"])
+    # 再补充探测设备
+    for entry, _ in matched_equipment:
+        if entry["resourceId"] not in existing_rids:
+            cat, subcat, mode = _classify_action("", entry)
+            actions.append({
+                "dispatchMode": mode,
+                "disposalCategory": cat,
+                "disposalSubcategory": subcat,
+                "estimatedDuration": 30,
+                "resourceId": entry["resourceId"],
+                "startTime": 0,
+            })
+            existing_rids.add(entry["resourceId"])
+
+    # ── 填充 startTime ──
+    for i, action in enumerate(actions):
+        action["startTime"] = now_ts + i * 60000
+
+    final_actions = actions[:10]
     return {
-        "plan_id": plan_id,
-        "generated_at": datetime.now(tz).isoformat(timespec="seconds"),
-        "model": getattr(client, "model", "unknown"),
-        "provider": getattr(client, "provider", "unknown"),
-        "focus": focus,
-        "mission_objective": mission_objective,
-        "situation_description": situation_description,
-        "friendly_assets": friendly_assets,
-        "hard_constraints": hard_constraints if isinstance(hard_constraints, list) else [
-            line.strip() for line in str(hard_constraints).splitlines() if line.strip()
-        ],
-        "soft_constraints": [
-            {"description": desc, "weight": weight}
-            for desc, weight in (soft_constraints if isinstance(soft_constraints, list) else [])
-        ] if isinstance(soft_constraints, list) and all(
-            isinstance(item, tuple) and len(item) == 2 for item in soft_constraints
-        ) else [
-            {"description": line.strip(), "weight": None}
-            for line in str(soft_constraints).splitlines() if line.strip()
-        ] if isinstance(soft_constraints, str) else [],
-        "plan_content": plan_content,
+        "planId": f"plan_{datetime.now(tz).strftime('%Y%m%d%H%M%S')}",
+        "planName": plan_name,
+        "targetName": "UAV无人机群",
+        "generateTime": now_ts,
+        "actionCount": len(final_actions),
+        "actions": final_actions,
     }
 
 
@@ -320,7 +470,7 @@ def run_interactive(client):
 
         # JSON 格式
         json_file = output_dir / f"{plan_id}.json"
-        plan_json = build_plan_json(
+        plan_json = build_structured_plan_json(
             mission_objective=mission_objective,
             situation_description=situation_description,
             friendly_assets=friendly_assets,
@@ -338,7 +488,6 @@ def run_interactive(client):
     print(f"\n{'='*60}")
     print("  全部方案生成完毕!")
     print(f"{'='*60}")
-
 
 def run_single(client, mission: str, situation: str, assets: str, output: str = ""):
     """单次生成模式 (用于脚本调用)。"""
@@ -360,29 +509,22 @@ def run_single(client, mission: str, situation: str, assets: str, output: str = 
 
     if output:
         # 文本格式
-        Path(output).write_text(result, encoding="utf-8")
-        print(f"\n\n已保存至: {output}")
+        # Text output removed — JSON only
         # 同路径 JSON 格式
         json_output = str(Path(output).with_suffix(".json"))
-        plan_json = build_plan_json(
+        plan_json = build_structured_plan_json(
             mission_objective=mission,
             situation_description=situation,
             friendly_assets=assets,
-            hard_constraints=[],
-            soft_constraints=[],
-            focus="综合效能最优化",
             plan_content=result,
-            client=client,
-            plan_id=Path(output).stem,
+            plan_name=mission[:20] + "反无人机方案",
         )
         Path(json_output).write_text(
             json.dumps(plan_json, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        print(f"已保存至: {json_output}")
-
+        print(f"{chr(10)}{chr(10)}已保存至: {json_output}")
     return result
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -434,7 +576,6 @@ def main():
     else:
         # 交互式模式
         run_interactive(client)
-
 
 if __name__ == "__main__":
     main()

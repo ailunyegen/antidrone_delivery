@@ -17,8 +17,8 @@ from .baselines import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Memento + Hope military research prototype")
-    parser.add_argument("--scenario", default="data/sample_joint_operation.json", help="Path to the scenario JSON file.")
-    parser.add_argument("--case-bank", default="data/military_case_bank.jsonl", help="Path to the military case bank JSONL file.")
+    parser.add_argument("--scenario", default="data/sample_antidrone.json", help="Path to the scenario JSON file.")
+    parser.add_argument("--case-bank", default="data/memory_bank.jsonl", help="Path to the military case bank JSONL file.")
     parser.add_argument("--output-dir", default="result/military_research_demo", help="Directory for generated outputs.")
     parser.add_argument("--iterations", type=int, default=3, help="Optimization loop count.")
     parser.add_argument("--seed", type=int, default=7, help="Random seed for Python and PyTorch reproducibility.")
@@ -35,6 +35,20 @@ def parse_args() -> argparse.Namespace:
                         help="HOPE SDE reversion coefficient (forgetting rate).")
     parser.add_argument("--hope-epsilon", type=float, default=0.02,
                         help="HOPE SDE noise strength.")
+
+    # ── 快速方案生成模式（Tier 1 / Tier 2 / 单候选 / 规则化反思）──
+    parser.add_argument("--single-candidate", action="store_true",
+                        help="收敛为单个候选，消除候选竞争带来的多倍 LLM 调用（快速模式）。")
+    parser.add_argument("--rule-based-reflection", action="store_true",
+                        help="规则化反思：零 LLM 调用，直接由仿真诊断构造反思增量。")
+    parser.add_argument("--fast-first", action="store_true",
+                        help="Tier 1 应急预案：零 LLM 案例骨架形变，毫秒级出库（--iterations 0 时仅出应急预案）。")
+    parser.add_argument("--delta-refine", action="store_true",
+                        help="Tier 2 Delta Loop：以应急预案为锚点做局部补丁增量优化，替代全量迭代。")
+    parser.add_argument("--delta-max-iters", type=int, default=12,
+                        help="Delta Loop 最大迭代轮次（默认 12）。")
+    parser.add_argument("--early-stop-ms", type=float, default=0.635,
+                        help="Delta Loop 早停质量门限（mission_success，默认 0.635）。")
     return parser.parse_args()
 
 
@@ -58,6 +72,12 @@ def main() -> None:
             allow_writeback=not args.disable_writeback,
             sde_theta=args.hope_theta,
             sde_epsilon=args.hope_epsilon,
+            single_candidate=args.single_candidate,
+            rule_based_reflection=args.rule_based_reflection,
+            fast_first=args.fast_first,
+            delta_refine=args.delta_refine,
+            delta_max_iters=args.delta_max_iters,
+            early_stop_ms=args.early_stop_ms,
         )
         result.setdefault("experiment_config", {})
         result["experiment_config"]["scenario_path"] = str(Path(args.scenario))

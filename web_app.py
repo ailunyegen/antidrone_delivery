@@ -26,12 +26,10 @@ except ImportError as e:
     st.error(f"无法导入必需模块: {e}")
     st.stop()
 
-
 # -- 页面配置 --
 st.set_page_config(page_title="反无人机行动方案生成系统", layout="wide")
 st.title("反无人机行动方案智能生成系统")
 st.caption(f"云端API版 | [{get_current_timestamp()}]")
-
 
 # ============================================================
 #  侧边栏: LLM 配置
@@ -58,7 +56,6 @@ with st.sidebar.expander("高级参数"):
     temperature = st.slider("生成温度", 0.0, 1.5, 0.7, 0.05)
     max_tokens = st.slider("最大输出 Token", 1000, 16000, 8000, 500)
 
-
 def _get_client() -> CloudLLMClient | None:
     key = api_key
     if not key:
@@ -74,7 +71,6 @@ def _get_client() -> CloudLLMClient | None:
     except Exception:
         return None
 
-
 client = _get_client()
 if client:
     st.sidebar.success(f"已连接: {client.model}")
@@ -82,7 +78,6 @@ if client:
     set_generate_text_func(client.generate_json)
 else:
     st.sidebar.warning("请填写 API Key")
-
 
 # ============================================================
 #  主界面
@@ -118,7 +113,6 @@ with col2:
     focus = st.selectbox("选择侧重点", [
         "探测效率和快速响应", "软硬杀伤协同和弹药节约", "创新的非对称反无人机战法"
     ])
-
 
 # ============================================================
 #  生成与评估
@@ -174,39 +168,122 @@ if st.button("生成反无人机方案", type="primary", use_container_width=Tru
             st.markdown(f"- 软约束 `{sc['constraint_id']}`: **{sc.get('score', 0)}/10**")
             st.caption(f"  {sc.get('reasoning', '')}")
 
-    # 导出
+    # 导出（仅 JSON，按 conversion_result.json 骨架）
     st.divider()
-    col_dl1, col_dl2 = st.columns(2)
-    with col_dl1:
-        st.download_button(
-            "导出方案文本", data=plan,
-            file_name=f"antidrone_plan_{time.strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain",
-        )
-    with col_dl2:
-        import json as _json
+    import json as _json
+    from datetime import datetime, timezone, timedelta
+
+    # 构建设备清单文本
+    assets_text = assets
+
+    # 在 web_app.py 中内联 build_structured_plan_json（避免循环导入）
+    def _build_structured_plan_json_web(
+        mission_obj: str, situation: str, assets_txt: str,
+        plan_text: str, plan_name: str,
+    ) -> dict:
+        import re as _re
         from datetime import datetime, timezone, timedelta
+        from pathlib import Path as _Path
         tz = timezone(timedelta(hours=8))
-        json_data = _json.dumps({
-            "plan_id": f"web_plan_{time.strftime('%Y%m%d_%H%M%S')}",
-            "generated_at": datetime.now(tz).isoformat(timespec="seconds"),
-            "model": client.model if client else "unknown",
-            "provider": client.provider if client else "unknown",
-            "focus": focus,
-            "mission_objective": mission_objective,
-            "situation_description": situation,
-            "friendly_assets": assets,
-            "hard_constraints": [l.strip() for l in hc_text.splitlines() if l.strip()],
-            "soft_constraints": [
-                {"description": p[0].strip(), "weight": float(p[1]) if len(p)>1 and p[1].strip() else None}
-                for line in sc_text.splitlines() if line.strip()
-                for p in [line.split(";", 1)]
-            ],
-            "plan_content": plan,
-            "evaluation": eval_result if "error" not in eval_result else None,
-        }, ensure_ascii=False, indent=2)
-        st.download_button(
-            "导出方案 JSON", data=json_data,
-            file_name=f"antidrone_plan_{time.strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json",
-        )
+        now_ts = int(datetime.now(tz).timestamp() * 1000)
+        NL = chr(10)
+
+        # Load equipment library (cached via st.session_state)
+        if "_eq_library" not in st.session_state:
+            _lib_path = _Path(__file__).resolve().parent / "equipment_library.json"
+            if _lib_path.exists():
+                import json as _json
+                st.session_state["_eq_library"] = _json.loads(_lib_path.read_text(encoding="utf-8")).get("equipment", [])
+            else:
+                st.session_state["_eq_library"] = []
+        library = st.session_state["_eq_library"]
+
+        def _match_eq(line):
+            ln = line.strip().lstrip('-').strip()
+            if '(' in ln: ln = ln.split('(')[0].strip()
+            ln = _re.split(r'\s+\d+', ln)[0].strip()
+            for e in library:
+                if e["name"] in ln or ln in e["name"]: return e
+            for e in library:
+                for a in e.get("aliases", []):
+                    if a in line or a in ln: return e
+            return {"name": ln[:20], "aliases": [], "resourceId": ln.replace(" ","-")[:12],
+                     "type": "探测", "disposalCategory": 1, "disposalSubcategory": 104, "dispatchMode": 1}
+
+        def _classify(text, eq=None):
+            if eq and eq.get("disposalCategory"):
+                return (eq["disposalCategory"], eq["disposalSubcategory"], eq.get("dispatchMode",2))
+            if any(k in text for k in ["干扰","压制","电子对抗","电磁"]):
+                if any(k in text for k in ["GNSS欺骗","GPS欺骗","导航欺骗"]): return (1,102,1)
+                if any(k in text for k in ["GNSS压制","GPS压制","导航压制"]): return (1,101,1)
+                if any(k in text for k in ["C2","指挥链路","数据链"]): return (1,100,2)
+                if any(k in text for k in ["遥控","射频"]): return (1,103,1)
+                if any(k in text for k in ["雷达"]): return (1,104,2)
+                return (1,103,2)
+            if any(k in text for k in ["激光"]): return (2,200,2) if any(k in text for k in ["远距离","远程"]) else (2,201,1)
+            if any(k in text for k in ["微波","HPM","电磁脉冲"]): return (2,202,2)
+            if any(k in text for k in ["网捕"]): return (3,300,3)
+            if any(k in text for k in ["防空导弹","导弹拦截","HQ-","红旗","SAM"]): return (4,401,2)
+            if any(k in text for k in ["高射炮","近防炮","CIWS","密集阵","弹幕"]): return (4,400,1)
+            if any(k in text for k in ["拦截无人机","撞击","物理撞击","蜂群对抗"]): return (4,400,2)
+            if any(k in text for k in ["协议劫持","链路接管"]): return (5,500,3)
+            if any(k in text for k in ["雷达","探测","侦察","搜索","预警"]): return (1,104,1)
+            return (1,103,2)
+
+        asset_lines = [l.strip() for l in assets_txt.splitlines() if l.strip()]
+        matched = []
+        seen = set()
+        for l in asset_lines:
+            m = _match_eq(l)
+            if m and m["resourceId"] not in seen:
+                matched.append((m, l))
+                seen.add(m["resourceId"])
+
+        actions = []
+        sections = _re.split(NL + r'(?=\d+\.\s)', plan_text)
+        for section in sections:
+            if not section.strip(): continue
+            found = []
+            for entry, _ in matched:
+                if entry["name"] in section: found.append(entry); continue
+                for alias in entry.get("aliases", []):
+                    if alias in section and len(alias) > 2: found.append(entry); break
+            detectors = [e for e in found if e.get("type")=="探测"]
+            counters = [e for e in found if e.get("type")=="反制"]
+            for entry in (counters + detectors)[:2]:
+                c, s, m = _classify(section, entry)
+                actions.append({"dispatchMode":m,"disposalCategory":c,"disposalSubcategory":s,"estimatedDuration":30,"resourceId":entry["resourceId"],"startTime":0})
+
+        existing = {a["resourceId"] for a in actions}
+        for entry, _ in matched:
+            if entry["resourceId"] not in existing and entry.get("type")=="反制":
+                c,s,m = _classify("", entry)
+                actions.append({"dispatchMode":m,"disposalCategory":c,"disposalSubcategory":s,"estimatedDuration":30,"resourceId":entry["resourceId"],"startTime":0})
+                existing.add(entry["resourceId"])
+        for entry, _ in matched:
+            if entry["resourceId"] not in existing:
+                c,s,m = _classify("", entry)
+                actions.append({"dispatchMode":m,"disposalCategory":c,"disposalSubcategory":s,"estimatedDuration":30,"resourceId":entry["resourceId"],"startTime":0})
+                existing.add(entry["resourceId"])
+
+        for i, a in enumerate(actions): a["startTime"] = now_ts + i * 60000
+        final = actions[:10]
+        return {"planId": f"plan_{datetime.now(tz).strftime('%Y%m%d%H%M%S')}",
+                "planName": plan_name,
+                "targetName": "UAV无人机群",
+                "generateTime": now_ts,
+                "actionCount": len(final),
+                "actions": final}
+
+    json_data = _json.dumps(
+        _build_structured_plan_json_web(
+            mission_objective, situation, assets_text, plan,
+            f"反无人机行动方案 (侧重点: {focus})",
+        ),
+        ensure_ascii=False, indent=2,
+    )
+    st.download_button(
+        "导出方案 JSON", data=json_data,
+        file_name=f"antidrone_plan_{time.strftime('%Y%m%d_%H%M%S')}.json",
+        mime="application/json",
+    )

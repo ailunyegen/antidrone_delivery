@@ -1,0 +1,274 @@
+{
+  "_comment": "反无人机装备库配置文件。name=装备全称, aliases=LLM可能使用的别名, resourceId=输出用短ID, type=探测/反制, disposalCategory/disposalSubcategory/dispatchMode=行为树枚举值",
+  "equipment": [
+    {
+      "name": "T1北部BC波段补盲雷达",
+      "aliases": ["BC波段补盲雷达", "YLC-12", "C波段低空补盲雷达", "补盲雷达", "低空补盲雷达"],
+      "resourceId": "T1-RADAR-N",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "T1东部频谱侦测端",
+      "aliases": ["频谱侦测端", "URD360", "全频段无人机侦测设备", "频谱侦测", "无线电侦测"],
+      "resourceId": "T1-SIGINT-E",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "T1南部可见光周视端",
+      "aliases": ["可见光周视端", "玄武号", "可见光周视搜索系统", "光电探测", "光电周视"],
+      "resourceId": "T1-EO-S",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "T1西部BRID侦测终端",
+      "aliases": ["BRID侦测终端", "HY-R1D01", "手持式RID侦测设备", "RID侦测", "远程识别"],
+      "resourceId": "T1-RID-W",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "T1东南声学阵列",
+      "aliases": ["声学阵列", "AS-208", "208通道声学探测阵列", "声学探测"],
+      "resourceId": "T1-ACOU-SE",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "T1定向干扰端A",
+      "aliases": ["定向干扰端A", "DJ-500", "定向干扰器", "C2链路压制", "定向干扰", "电子干扰端"],
+      "resourceId": "T1-JAM-A",
+      "type": "反制",
+      "disposalCategory": 1,
+      "disposalSubcategory": 100,
+      "dispatchMode": 2
+    },
+    {
+      "name": "T1导航诱骗站",
+      "aliases": ["导航诱骗站", "NS-300", "导航诱骗系统", "GNSS诱骗", "GPS诱骗", "导航欺骗"],
+      "resourceId": "T1-SPOOF",
+      "type": "反制",
+      "disposalCategory": 1,
+      "disposalSubcategory": 102,
+      "dispatchMode": 1
+    },
+    {
+      "name": "T1网捕站",
+      "aliases": ["网捕站", "ZBW-HW03", "手持网捕枪", "空中网捕", "网捕"],
+      "resourceId": "T1-NET",
+      "type": "反制",
+      "disposalCategory": 3,
+      "disposalSubcategory": 300,
+      "dispatchMode": 3
+    },
+
+    {
+      "name": "JY-17B低空搜索雷达",
+      "aliases": ["JY-17B", "低空搜索雷达", "搜索雷达"],
+      "resourceId": "JY-17B",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "DWL-200车载电子对抗系统",
+      "aliases": ["DWL-200", "车载电子对抗系统", "电子对抗系统"],
+      "resourceId": "DWL-200",
+      "type": "反制",
+      "disposalCategory": 1,
+      "disposalSubcategory": 100,
+      "dispatchMode": 2
+    },
+    {
+      "name": "天猎-1拦截无人机",
+      "aliases": ["天猎-1", "拦截无人机", "TL-1"],
+      "resourceId": "TL-1",
+      "type": "反制",
+      "disposalCategory": 4,
+      "disposalSubcategory": 400,
+      "dispatchMode": 2
+    },
+    {
+      "name": "红旗-17A近程防空导弹",
+      "aliases": ["红旗-17A", "近程防空导弹", "HQ-17A", "防空导弹"],
+      "resourceId": "HQ-17A",
+      "type": "反制",
+      "disposalCategory": 4,
+      "disposalSubcategory": 401,
+      "dispatchMode": 2
+    },
+    {
+      "name": "CHL-802反无人机干扰枪",
+      "aliases": ["CHL-802", "反无人机干扰枪", "干扰枪"],
+      "resourceId": "CHL-802",
+      "type": "反制",
+      "disposalCategory": 1,
+      "disposalSubcategory": 103,
+      "dispatchMode": 1
+    },
+
+    {
+      "name": "综合防空指挥系统",
+      "aliases": ["防空指挥系统", "IADS"],
+      "resourceId": "IADS-C2",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 2
+    },
+    {
+      "name": "光电探测系统",
+      "aliases": ["光电", "红外探测"],
+      "resourceId": "EO-Sensor",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "无线电侦测站",
+      "aliases": ["无线电侦测", "信号侦察"],
+      "resourceId": "SIGINT-Station",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "电磁频谱监测车",
+      "aliases": ["频谱监测车", "电磁频谱"],
+      "resourceId": "ESM-Vehicle",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "高功率微波系统",
+      "aliases": ["高功率微波", "HPM", "微波"],
+      "resourceId": "HPM-System",
+      "type": "反制",
+      "disposalCategory": 2,
+      "disposalSubcategory": 202,
+      "dispatchMode": 2
+    },
+    {
+      "name": "激光反无人机系统",
+      "aliases": ["激光反无人机", "激光系统", "激光"],
+      "resourceId": "Laser-CUAS",
+      "type": "反制",
+      "disposalCategory": 2,
+      "disposalSubcategory": 201,
+      "dispatchMode": 1
+    },
+    {
+      "name": "弹炮合一防空系统",
+      "aliases": ["弹炮合一", "弹炮结合"],
+      "resourceId": "Gun-Missile",
+      "type": "反制",
+      "disposalCategory": 4,
+      "disposalSubcategory": 400,
+      "dispatchMode": 1
+    },
+    {
+      "name": "自行高射炮",
+      "aliases": ["高射炮", "自行高炮"],
+      "resourceId": "SPAAG",
+      "type": "反制",
+      "disposalCategory": 4,
+      "disposalSubcategory": 400,
+      "dispatchMode": 1
+    },
+    {
+      "name": "侦察无人机",
+      "aliases": ["侦察UAV"],
+      "resourceId": "Recon-UAV",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "电子战无人机",
+      "aliases": ["电子战UAV", "EW无人机"],
+      "resourceId": "EW-UAV",
+      "type": "反制",
+      "disposalCategory": 1,
+      "disposalSubcategory": 100,
+      "dispatchMode": 2
+    },
+    {
+      "name": "反无人机指挥控制车",
+      "aliases": ["指挥控制车", "反无人机指挥车"],
+      "resourceId": "CUAS-C2",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 2
+    },
+    {
+      "name": "后勤保障车",
+      "aliases": ["保障车"],
+      "resourceId": "Logistics-Veh",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 2
+    },
+    {
+      "name": "弹药补给车",
+      "aliases": ["补给车"],
+      "resourceId": "Ammo-Veh",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 2
+    },
+    {
+      "name": "声学传感器阵列",
+      "aliases": ["声学传感器", "声学阵列"],
+      "resourceId": "Acoustic-Array",
+      "type": "探测",
+      "disposalCategory": 1,
+      "disposalSubcategory": 104,
+      "dispatchMode": 1
+    },
+    {
+      "name": "GPS欺骗设备",
+      "aliases": ["GPS欺骗", "导航欺骗设备"],
+      "resourceId": "GPS-Spoofer",
+      "type": "反制",
+      "disposalCategory": 1,
+      "disposalSubcategory": 102,
+      "dispatchMode": 1
+    },
+    {
+      "name": "近程防空导弹",
+      "aliases": ["近程防空", "SHORAD"],
+      "resourceId": "SHORAD",
+      "type": "反制",
+      "disposalCategory": 4,
+      "disposalSubcategory": 401,
+      "dispatchMode": 2
+    }
+  ],
+
+  "_parsing_rules": {
+    "asset_line_format": "支持两种格式: 1)简洁格式'装备名 数量' 2)详细格式'-位置标签 装备名(类型, 型号:xxx, 子类型:xxx, ...)'",
+    "name_extraction": "从资产行中提取: 先尝试匹配equipment库中的name, 再尝试aliases, 回退取'-'后'('前的文本",
+    "quantity_extraction": "默认1, 如行末有'xN'或数字则提取"
+  }
+}

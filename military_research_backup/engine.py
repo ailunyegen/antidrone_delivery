@@ -32,7 +32,6 @@ from .domain import (
     clamp_value,
     infer_action_type,
 )
-from .exporters import build_c2sim_xml, build_ov5b, build_ov6c
 
 
 SLOW_WEIGHT_LIBRARY: Dict[str, Dict[str, float]] = {
@@ -1687,7 +1686,7 @@ class PlanSimulator:
         total_friendly_loss = 0.0
         total_enemy_loss = 0.0
         total_time = 0.0
-        stage_accumulator: Dict[str, List[float]] = defaultdict(list)
+        stage_accumulator: Dict[str, List[float]] = {}
 
         for phase in plan.phases:
             requirements = self._phase_requirements(phase)
@@ -1753,7 +1752,7 @@ class PlanSimulator:
             total_enemy_loss += enemy_loss
             total_time += duration
             for stage_name, score in stage_scores.items():
-                stage_accumulator[stage_name].append(score)
+                stage_accumulator.setdefault(stage_name, []).append(score)
 
         aggregated_stage_scores = {
             stage_name: round(sum(values) / len(values), 4)
@@ -2005,7 +2004,7 @@ class PlanSimulator:
             scale = max(1.0, math.sqrt(unit.quantity)) * clamp_value(unit.readiness, 0.3, 1.0)
             for key in CAPABILITY_KEYS:
                 aggregated[key] += getattr(unit, key) * scale
-        return aggregated
+        return dict(aggregated)
 
     def _phase_blue_capabilities(
         self,
@@ -2022,8 +2021,8 @@ class PlanSimulator:
             if unit.name not in phase.allocated_units and unit.name in joined
         ]
 
-        allocated_caps = self._aggregate_capabilities(allocated_units) if allocated_units else defaultdict(float)
-        support_caps = self._aggregate_capabilities(support_units) if support_units else defaultdict(float)
+        allocated_caps = self._aggregate_capabilities(allocated_units) if allocated_units else {}
+        support_caps = self._aggregate_capabilities(support_units) if support_units else {}
         phase_caps: Dict[str, float] = {}
         for key in CAPABILITY_KEYS:
             local_cap = allocated_caps.get(key, 0.0) + 0.35 * support_caps.get(key, 0.0)
@@ -2717,6 +2716,23 @@ class MilitaryResearchPipeline:
             return False
         return True
 
+    def _rule_based_reflection(self, best_result: SimulationResult) -> Dict[str, Any]:
+        """规则化反思：零 LLM 调用，直接由仿真诊断输出构造反思增量。
+
+        仿真器的 notes / recommendations 本身即为规则化诊断（见
+        ``PlanSimulator._build_failure_notes`` 与 ``_recommend``），此处仅做
+        字段搬运并附加一条稳定化 prompt 补丁，用于快速模式的迭代驱动。
+        """
+        notes = list(best_result.notes or [])
+        recommendations = list(best_result.recommendations or [])
+        diagnosis = notes[:2] or ["当前方案整体稳定，聚焦最弱阶段局部修正。"]
+        variant_instructions = recommendations[:2] or ["保持现有阶段结构，仅修正最弱阶段动作。"]
+        return {
+            "diagnosis": diagnosis,
+            "variant_instructions": variant_instructions,
+            "meta_prompt_patch": "仅针对仿真诊断的最弱阶段做局部修正，其余阶段保持稳定。",
+        }
+
     def run(
         self,
         scenario: Scenario,
@@ -2728,12 +2744,22 @@ class MilitaryResearchPipeline:
         allow_writeback: bool = True,
         sde_theta: float = 0.5,
         sde_epsilon: float = 0.02,
+        single_candidate: bool = False,
+        rule_based_reflection: bool = False,
+        fast_first: bool = False,
+        delta_refine: bool = False,
+        delta_max_iters: int = 12,
+        early_stop_ms: float = 0.635,
+        stream_callback=None,
     ) -> Dict[str, Any]:
         controller = DualMemoryController(scenario.doctrine_profile, seed=self.seed,
                                            sde_theta=sde_theta, sde_epsilon=sde_epsilon)
         generator = PlanGenerator()
         simulator = PlanSimulator(self.rng)
 
+        emergency: Dict[str, Any] | None = None
+        delta_history: List[Dict[str, Any]] = []
+        delta_wall_sec: float | None = None
         history: List[Dict[str, Any]] = []
         best_plan: CombatPlan | None = None
         best_result: SimulationResult | None = None
@@ -2744,6 +2770,49 @@ class MilitaryResearchPipeline:
         iteration_wall_times: List[float] = []
         iteration_candidate_counts: List[int] = []
         total_simulation_rollouts = 0
+
+        if fast_first or delta_refine:
+            # ── System 1（快道）：第 0 秒应急预案，零 LLM 调用 ──
+            from .fast_pipeline import System1FastPlanner
+
+            s1 = System1FastPlanner(self.case_bank, seed=self.seed)
+            s1_started = time.perf_counter()
+            emergency_plan, warped_scenario = s1.build_emergency_plan(scenario)
+            emergency_latency_ms = round((time.perf_counter() - s1_started) * 1000, 1)
+            emergency_artifacts = s1.export(emergency_plan, warped_scenario)
+            emergency_sim = s1.simulate(
+                emergency_plan, warped_scenario, runs=max(1, int(sim_runs))
+            )
+            emergency = {
+                "tier": "System-1-Emergency",
+                "latency_ms": emergency_latency_ms,
+                "plan": emergency_plan.to_dict(),
+                "simulation": emergency_sim.to_dict(),
+                "artifacts": emergency_artifacts,
+            }
+            if stream_callback is not None:
+                stream_callback(dict(emergency))
+            # System 2（慢道）以应急预案为起点续跑：LLM 迭代在既有方案基础上
+            # 保留高分阶段、仅修正最弱阶段（与现有“反思约束”语义一致）。
+            best_plan = emergency_plan
+            best_result = emergency_sim
+
+        if delta_refine:
+            # ── System 2（慢道）：Delta Loop 增量修补替代全量迭代 ──
+            from .fast_pipeline import DeltaRefiner
+
+            refiner = DeltaRefiner(llm=generator.llm, seed=self.seed, sim_runs=max(1, int(sim_runs)))
+            delta_started = time.perf_counter()
+            best_plan, delta_history = refiner.refine(
+                scenario=warped_scenario,
+                anchor_plan=emergency_plan,
+                iterations=delta_max_iters,
+                stream_callback=stream_callback,
+                early_stop_ms=early_stop_ms,
+            )
+            delta_wall_sec = round(time.perf_counter() - delta_started, 2)
+            best_result = refiner._simulate(warped_scenario, best_plan)
+            iterations = 0  # Delta Loop 即 System 2 主循环，跳过全量迭代
 
         for iteration in range(iterations):
             iteration_started = time.perf_counter()
@@ -2880,6 +2949,16 @@ class MilitaryResearchPipeline:
                     elif self._prefer_reflection_only(scenario, memory_hits) and active_reflection is not None:
                         candidate_specs.append(reflection_only)
 
+            if single_candidate and len(candidate_specs) > 1:
+                # 快速模式：收敛为单个候选，消除候选竞争带来的多倍 LLM 调用。
+                # 优先级 fusion_full > guided_full > memory_anchor > hope_baseline > reflection_only。
+                priority = ["fusion_full", "guided_full", "memory_anchor", "hope_baseline", "reflection_only"]
+                chosen = next(
+                    (spec for label in priority for spec in candidate_specs if spec["label"] == label),
+                    candidate_specs[0],
+                )
+                candidate_specs = [chosen]
+
             iteration_candidate_counts.append(len(candidate_specs))
             candidate_results: List[Tuple[str, CombatPlan, SimulationResult, List[Dict[str, Any]]]] = []
             for spec in candidate_specs:
@@ -2923,7 +3002,11 @@ class MilitaryResearchPipeline:
                 controller.integrate_feedback(plan, result, best_plan=best_plan, best_result=best_result)
             if not disable_reflection:
                 reflection = (
-                    generator.reflect(scenario, best_plan, best_result)
+                    (
+                        self._rule_based_reflection(best_result)
+                        if rule_based_reflection
+                        else generator.reflect(scenario, best_plan, best_result)
+                    )
                     if self._should_use_reflection(scenario, best_result, {"diagnosis": ["bootstrap"]})
                     else None
                 )
@@ -2987,9 +3070,10 @@ class MilitaryResearchPipeline:
             "best_plan": best_plan.to_dict(),
             "best_simulation": best_result.to_dict(),
             "last_reflection": reflection,
-            "dodaf": {"ov5b": build_ov5b(best_plan, scenario), "ov6c": build_ov6c(best_plan)},
-            "c2sim_xml": build_c2sim_xml(best_plan, scenario),
             "optimization_history": history,
+            "emergency": emergency,
+            "delta_history": delta_history,
+            "delta_wall_sec": delta_wall_sec,
             "bottleneck_diagnostic": controller.bottleneck_detector.snapshot() if not disable_hope else None,
         }
 
@@ -3087,15 +3171,6 @@ class MilitaryResearchPipeline:
             output_path / "simulation.json",
             json.dumps(result["best_simulation"], ensure_ascii=False, indent=2),
         )
-        self._safe_write_text(
-            output_path / "dodaf_ov5b.json",
-            json.dumps(result["dodaf"]["ov5b"], ensure_ascii=False, indent=2),
-        )
-        self._safe_write_text(
-            output_path / "dodaf_ov6c.json",
-            json.dumps(result["dodaf"]["ov6c"], ensure_ascii=False, indent=2),
-        )
-        self._safe_write_text(output_path / "c2sim.xml", result["c2sim_xml"])
         self._safe_write_text(
             output_path / "full_result.json",
             json.dumps(result, ensure_ascii=False, indent=2),
