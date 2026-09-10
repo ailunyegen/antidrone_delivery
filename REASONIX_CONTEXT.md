@@ -3,7 +3,7 @@
 > **用途**：给未来的 AI 会话（以及我自己）一份可检索的历史上下文，避免每次重读 5 MB 会话日志。
 > **生成方式**：从 `%APPDATA%\reasonix\projects\d--研究生材料-…-antidrone_delivery\sessions\` 下的 5 条会话记录（共 ~6.5 MB）全文提炼，并与当前工作区文件系统逐项核对。
 > **核对时间点**：见文末「六、版本谱系与当前差异」——**本文件中的代码结论均以核对时的工作区实况为准，会话记录中的说法若与实况冲突，以「现状核实」一栏为准。**
-> **当前状态**：T1（源码回灌）、T2（版本控制整理）**已落地**（`3e5bca4` / `1aea632`，详见「十、本轮落地记录」）；下一步优先项是 **T12**（管线仍依赖本地 LM Studio）与 **T3/T4**。
+> **当前状态**：T1（源码回灌）、T2（版本控制整理）、**T12（管线接入 config.json 云端 API + 重编译）** 均已落地（提交 `3e5bca4` / `1aea632` / 本轮 T12 提交，详见「十、本轮落地记录」）；下一步优先项是 **T13**（手册 v4.3 同步）与 **T14**（出交付包 提交版_05），其次 T3/T4。
 > **更新规则**：每完成一条「遗留待办」或推翻一条「已定决策」，回来改这里，不要只在对话里说。
 
 ---
@@ -50,7 +50,7 @@
 | # | 决策 | 关键细节 / 理由 |
 |---|---|---|
 | **D1** | `military_research/` 12 个模块**编译为 Cython `.pyd`（裸名，无平台标签）**交付，源码移入 `military_research_backup/` | 保护源码不直接给合作方；与原有 5 个裸名 `.pyd` 格式统一。用 `build_military_pyd.py --yes` 编译；`military_research/` 最终只留 `__init__.py` + 13 个 pyd |
-| **D2** | **研究管线的 LLM 由环境变量改为 `config.json` + `CloudLLMClient`**，与前端统一 | 原为 `LocalLLMPlanner` + `LOCAL_LLM_BASE_URL`（默认 `http://localhost:1234/v1`）读本地 LM Studio。改后四种方式共用一份配置。**⚠️ 状态修正（本轮实测）**：该改动**只存在于当时那次会话的临时源码里，从未进入任何提交或交付产物**——扫描 `提交版_01/_03/_04`、`_02` 与当前仓库的 `engine.pyd` 二进制，`CloudLLMClient` 计数**全部为 0**，`LocalLLMPlanner` 均在。**即当前全部产物仍是「管线走本地 LM Studio、前端走 config.json」的双配置**，见 **T12** |
+| **D2** | **研究管线的 LLM 由环境变量改为 `config.json` + `CloudLLMClient`**，与前端统一 | ✅ **T12 已完成（本轮）**。历史情况：该改动曾在一次会话的临时源码里跑通（MS 0.6171），但**从未进入任何提交或交付产物**——T12 前扫描全部 `engine.pyd`，`CloudLLMClient` 计数皆为 0。本轮以更稳健的方式重新落地：`load_llm_config()` + `_CloudChatShim` 适配层，**云端优先、本地回退**，`_chat_json` 与 `DeltaRefiner` 调用点零改动。原 `LocalLLMPlanner` + `LOCAL_LLM_BASE_URL`（默认 `http://localhost:1234/v1`）保留为回退路径 |
 | **D3** | **模型名回退必须映射到有效模型名** | `config.json` 中 `"model": ""` 曾回退为字面量 `"deepseek"` → API 报错。正确做法：空值时映射到 `deepseek-chat` / `deepseek-v4-pro` / `deepseek-v4-flash` 之类有效名 |
 | **D4** | **输出 JSON 结构以 `conversion_result.json` 为强制模板** | 顶层 6 key 固定：`planId` / `planName` / `targetName` / `generateTime` / `actionCount` / `actions`；每个 action 6 字段：`dispatchMode` / `disposalCategory` / `disposalSubcategory` / `estimatedDuration` / `resourceId` / `startTime`。**取消所有 `.txt` 输出**，四种方式统一产出该骨架 JSON。验收含 `actionCount == len(actions)` |
 | **D5** | **处置手段与行为树枚举对齐，分类改为「装备优先」** | 行为树 5 大类枚举（ElectronicJamming/DirectedEnergy/PhysicalCapture/KineticKill/ProtocolHijack）；项目补齐缺失的 **GNSSJamming(101)**；`_classify_action` 由「关键词」改为**先按装备名判定**，修掉 `JY-17B低空搜索雷达` 被误判为「遥控信号干扰(103)」的问题（现归「雷达干扰(104)」） |
@@ -91,7 +91,9 @@
 | **T4** | **`assets.txt` 装备解析格式兼容未彻底解决** | 解析假设格式为 `装备名 数量`（用 `re.split(r'\s+\d+', line)[0]`）；用户实际提供的 `T1北部BC波段补盲雷达(雷达，型号：YLC-12 C波段低空补盲雷达，位置：…)` 会被切错。装备库已补 T1 系列别名（共 29 条），但**是否已改用更稳健的匹配（如「库中名称/别名子串包含」优先于分词）未见收尾验证** |
 | **T5** | 数据库方案未落地 | 仅为 U40 的设计回答（SQLite 表结构），无代码、无迁移脚本 |
 | **T5b** | ✅ **已澄清（T2 期间确认）**：仓库为**私有**仓库 | 用户确认 `ailunyegen/antidrone_delivery` 为私有，故 `military_research_backup/` 12 个 `.py` 源码**保持跟踪、不改写历史**（e144230 无需 filter-repo）。若日后仓库转公开，必须重提本项。**注：从本机无法直连 GitHub API 核实可见性（HTTPS 443 被拦），结论依据用户确认。** |
-| **T12** | **⚠️ 管线仍依赖本地 LM Studio（D2 未落地）** | 实测：当前全部分支的 `engine.pyd` 二进制均**只有 `LocalLLMPlanner`、无 `CloudLLMClient`**；`run_military_research.py` 默认连 `http://localhost:1234/v1`（model=`local-model`），CI/干净机器上非 Tier1 路径必然失败（实测报 `Error code: 502`）。**要点**：`--fast-first` 单独使用**仍会跑 3 轮 LLM 迭代**（`run()` 里 Tier1 只设应急预案为起点，随后 `for iteration in range(iterations)` 照跑）；**零 LLM 必须 `--fast-first --iterations 0`**（手册 v4.2 已正确写明）。**待决定**：是否把 `config.json` + `CloudLLMClient` 的改动重新应用到带 fast_pipeline 的引擎上 |
+| **T12** | ✅ **已完成**（本轮）——管线改用 `config.json` + `CloudLLMClient`，并重编译 | 在 `engine.py` 增加 `load_llm_config()`（查找顺序：显式路径 → cwd → 项目根；api_key 支持环境变量兜底）与 `_CloudChatShim`（把 `CloudLLMClient.generate_json()` 适配成 `chat.completions.create()`，从而**不动** `_chat_json` 及下游 `DeltaRefiner`）；`LocalLLMPlanner.__init__` 先试云端、失败或无配置时**自动回退本地** `LOCAL_LLM_*`。**验证**：后端探测 `cloud / deepseek / deepseek-chat / https://api.deepseek.com/v1`；真实 API 调用返回合法 JSON；`--iterations 1 --single-candidate` 全流程走云端跑通（MS 0.6412 / LER 0.8307 / OE 0.6717，exit 0）；无 config 时回退 `local / http://localhost:1234/v1`；Tier1 零 LLM 仍为 **0.6041**；前端 `--check` 5/5；运行清单已正确记录 `api_mode=cloud-json (deepseek)`、`source=config.json` |
+| **T13** | **手册需随 T12 更新（v4.3）** | `用户指导手册_v4.2.docx` 的 5.4 节仍按 `LOCAL_LLM_*` 环境变量 + 本地 LM Studio 描述管线接入；T12 后管线**优先读 `config.json`**（与前端同一份），本地 LM Studio 退为回退路径。需改手册说明，并补充"无 config.json 时行为不变"的提示 |
+| **T14** | **交付包需重新出包（提交版_05）** | `提交版_04` 的 `military_research/engine.pyd` 仍是**不支持 config.json 的旧版**（871,424 B）；仓库新构建的 engine.pyd 为 947,712 B。若要给合作方带 T12 能力，需按 D7 流程出 `提交版_05`（换 engine.pyd + 更新手册） |
 
 ### 🟡 中优先（一致性与整洁）
 
@@ -168,6 +170,10 @@
 7. **无 git 仓库时无法做「审查最近一次提交」**：首次会话就卡在这。
 8. **HTTPS 推 GitHub 不通**（443 被拦），只能用 SSH；远端 `origin` 现已是 SSH 形式。
 9. **`config.json` 含真实 API Key**，已被 gitignore + 提交版清除；`.env`（`%APPDATA%\reasonix\.env`）亦属敏感，勿读勿传。
+10. **在本机 DSH 沙箱内重编译 `.pyd` 的三个坑（T12 实测）**：
+    - python 子进程的**删除操作被沙箱拒绝**（`os.remove` / `shutil.rmtree` 报 `PermissionError`，工作区内也一样），而 `build_military_pyd.py` 必须删除重建临时目录并覆盖既有 `.pyd` → 需以 `danger-full-access` 运行编译命令；
+    - `TEMP` 必须指向**工作区内**目录（harness 的临时目录对 python 子进程不可写），例如 `$env:TEMP=(Join-Path (Get-Location) 'temp')`；
+    - TEMP 路径一深，三个长模块名（`export_generalization_case_banks` / `summarize_generalization` / `summarize_multiseed_ablation`）就会 `LNK1104` 链接失败 → 若需整包重编，用浅层 TEMP（如 `C:\pydtmp`）。**只改 `engine.py` 时可只把该文件放进 `military_research/` 再编译，避开长名模块。**
 
 ---
 
@@ -248,4 +254,30 @@ python -c "import json;print(len(json.load(open('equipment_library.json',encodin
 1. **D2 从未落地（T12）**：扫描 `提交版_01/_03/_04`、`_02`、当前仓库的 `engine.pyd`，`CloudLLMClient` 出现次数**全为 0**、`LocalLLMPlanner` 均存在。**结论：管线始终走本地 LM Studio（`http://localhost:1234/v1`），与前端 `config.json` 双轨并存**；干净机器上非 Tier1 路径会 `502` 失败。会话记录里 U16 那次「管线跑通（MS 0.6171）」用的临时源码版本未被任何产物继承。
 2. **Tier1 语义澄清**：`--fast-first` 只是把应急预案作为**起点**，`run()` 仍执行 `for iteration in range(iterations)`。零 LLM 需 `--fast-first --iterations 0`。**手册 v4.2 已正确写明该用法**（无需修改手册）。
 3. **仓库结构冗余已消除**：此前仓库同时跟踪裸名与平台标签 `.pyd`（24 个重复文件），现只保留裸名；`提交版_04` 亦只含裸名，两者一致。
-4. **`提交版_04` 与仓库核心产物 MD5 一致**：`engine.pyd` / `cli.pyd` / `fast_pipeline.pyd` / `equipment_library.json` / `main_compiled.py` / `web_app.py` 全部逐字节相同 —— 仓库现在是**可复现出交付包**的基线。
+4. **`提交版_04` 与仓库核心产物 MD5 一致**：`engine.pyd` / `cli.pyd` / `fast_pipeline.pyd` / `equipment_library.json` / `main_compiled.py` / `web_app.py` 全部逐字节相同 —— 仓库现在是**可复现出交付包**的基线。（⚠️ T12 之后 `engine.pyd` 已领先于 `提交版_04`，见 T14。）
+
+### 10.4 T12：管线接入 config.json 云端 API（本轮）
+
+**改了什么**（源码 `military_research_backup/engine.py`，168,521 B）：
+
+| 新增/修改 | 作用 |
+|---|---|
+| `load_llm_config()` | 读取与前端共用的 `config.json`（`provider/api_key/model/base_url/max_tokens`）；查找顺序 显式路径 → cwd → 项目根；api_key 支持 `DEEPSEEK_API_KEY` 等环境变量兜底；**无可用配置返回 `None`**；结果带缓存 |
+| `_project_root()` | 兼容源码运行与 `.pyd` 运行（`__file__` 的上级目录） |
+| `_CloudChatShim` / `_CloudChatNamespace` / `_CloudCompletions` | 把 `CloudLLMClient.generate_json()` 适配成 `client.chat.completions.create(...)`，**`_chat_json` 与 `DeltaRefiner._chat_json` 调用点零改动** |
+| `LocalLLMPlanner.__init__` | 先试云端（`init_cloud_client`，空 model 自动解析为服务商默认模型）；不可用时**静默回退**原有 `LOCAL_LLM_*` 本地路径；新增 `self.backend` / `self.provider` |
+| `_collect_runtime_manifest()` | 运行清单如实记录 `model_id` / `base_url` / `api_mode`（`cloud-json (deepseek)` 或 `openai-compatible`）/ `source` |
+| `_chat_json` 报错信息 | 由「Local LLM failed…」改为含 `backend=` 的通用描述 |
+
+**验证矩阵（全部实跑）**：
+
+| 用例 | 期望 | 实测 |
+|---|---|---|
+| 后端探测 | cloud + 服务商默认模型 | `cloud / deepseek / deepseek-chat / https://api.deepseek.com/v1` ✅ |
+| 真实 API 调用（经 shim） | 返回合法 JSON | `{"ok": true, "note": "连通性测试"}` ✅ |
+| 全流程云端跑通 `--iterations 1 --single-candidate` | 产出方案与报告 | exit 0；**MS 0.6412 / LER 0.8307 / 12.5h / OE 0.6717**；运行清单 `api_mode=cloud-json (deepseek)`、`source=config.json` ✅ |
+| 无 config.json 时回退 | `local / http://localhost:1234/v1` | ✅ |
+| Tier1 零 LLM（`--fast-first --iterations 0`） | 0.6041（与 T1 一致） | ✅ 0.6041 |
+| 前端 `main_compiled.py --check` | 5/5 | ✅ 5/5 |
+
+**产物**：`military_research/engine.pyd` 871,424 B → **947,712 B**（平台标签镜像同步）；`military_research/engine.py` 编译后已删除，包内保持「仅 `.pyd` + `__init__.py`」的交付形态。其余 9 个未改源码的 `.pyd` 已从 git 还原（保持 `提交版_04` 同源产物），因此本次提交**只有 engine 一项二进制变化**，便于审计。

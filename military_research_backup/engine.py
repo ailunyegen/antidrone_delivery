@@ -7,6 +7,7 @@ import platform
 import random
 import re
 import subprocess
+import sys
 import time
 import uuid
 from collections import defaultdict
@@ -521,8 +522,182 @@ class DualMemoryController(nn.Module):
             self.previous_reward.fill_(reward)
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# T12：研究管线的 LLM 后端选择（config.json 云端 API，缺失时回退本地 LLM）
+# ────────────────────────────────────────────────────────────────────────────
+
+_LLM_CONFIG_CACHE: Dict[str, Any] | None = None
+_LLM_CONFIG_LOADED = False
+
+
+def _project_root() -> Path:
+    """项目根目录。源码运行时为 military_research/ 的上级；.pyd 运行时同理。"""
+    here = Path(__file__).resolve()
+    if here.parent.name == "military_research":
+        return here.parent.parent
+    return Path.cwd()
+
+
+def load_llm_config(config_path: str | Path | None = None) -> Dict[str, Any] | None:
+    """读取与前端共用的 config.json。找不到或没有 api_key 时返回 None（回退本地）。
+
+    查找顺序：显式路径 → 当前工作目录 config.json → 项目根目录 config.json。
+    api_key 支持与前端一致的环境变量兜底。
+    """
+    global _LLM_CONFIG_CACHE, _LLM_CONFIG_LOADED
+
+    if config_path is None and _LLM_CONFIG_LOADED:
+        return _LLM_CONFIG_CACHE
+
+    candidates: List[Path] = []
+    if config_path is not None:
+        candidates.append(Path(config_path))
+    else:
+        candidates.append(Path("config.json"))
+        root_candidate = _project_root() / "config.json"
+        if root_candidate not in candidates:
+            candidates.append(root_candidate)
+
+    cfg: Dict[str, Any] | None = None
+    for path in candidates:
+        try:
+            if path.is_file():
+                with path.open("r", encoding="utf-8") as fh:
+                    cfg = json.load(fh)
+                break
+        except Exception:
+            cfg = None
+
+    if isinstance(cfg, dict) and not cfg.get("api_key"):
+        for env_key in (
+            "DEEPSEEK_API_KEY",
+            "OPENAI_API_KEY",
+            "DASHSCOPE_API_KEY",
+            "ZHIPUAI_API_KEY",
+            "MOONSHOT_API_KEY",
+            "SILICONFLOW_API_KEY",
+            "ANTIDRONE_API_KEY",
+        ):
+            env_value = os.getenv(env_key, "").strip()
+            if env_value:
+                cfg["api_key"] = env_value
+                break
+
+    if not isinstance(cfg, dict) or not cfg.get("api_key"):
+        cfg = None
+
+    if config_path is None:
+        _LLM_CONFIG_LOADED = True
+        _LLM_CONFIG_CACHE = cfg
+    return cfg
+
+
+def _cloud_provider_defaults(provider: str) -> Tuple[str, str]:
+    """返回服务商的 (默认模型, 默认 base_url)；查询失败时用 DeepSeek 预设兜底。"""
+    try:
+        from llm_interface_cloud import get_provider_config
+
+        preset = get_provider_config(provider) or {}
+        model = str(preset.get("default_model") or "").strip()
+        base_url = str(preset.get("base_url") or "").strip()
+        if model or base_url:
+            return model or "deepseek-chat", base_url
+    except Exception:
+        pass
+    return "deepseek-chat", "https://api.deepseek.com/v1"
+
+
+class _ChatCompletionMessage:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class _ChatCompletionChoice:
+    def __init__(self, content: str) -> None:
+        self.message = _ChatCompletionMessage(content)
+
+
+class _ChatCompletionResponse:
+    def __init__(self, content: str) -> None:
+        self.choices = [_ChatCompletionChoice(content)]
+
+
+class _CloudCompletions:
+    """把 CloudLLMClient 适配成 openai 风格的 chat.completions.create。"""
+
+    def __init__(self, client: Any, default_max_tokens: int = 8000) -> None:
+        self._client = client
+        self._default_max_tokens = default_max_tokens
+
+    def create(
+        self,
+        model: str | None = None,
+        temperature: float = 0.2,
+        messages: List[Dict[str, Any]] | None = None,
+        response_format: Dict[str, Any] | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> _ChatCompletionResponse:
+        system_prompt = ""
+        user_prompt = ""
+        for message in messages or []:
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            if role == "system":
+                system_prompt = str(message.get("content") or "")
+            elif role == "user":
+                user_prompt = str(message.get("content") or "")
+
+        text = self._client.generate_json(
+            user_prompt,
+            system_prompt=system_prompt,
+            temperature=float(temperature if temperature is not None else 0.2),
+            max_tokens=int(max_tokens or self._default_max_tokens),
+        )
+        return _ChatCompletionResponse(str(text or ""))
+
+
+class _CloudChatNamespace:
+    """对应 openai 客户端的 .chat 命名空间。"""
+
+    def __init__(self, completions: "_CloudCompletions") -> None:
+        self.completions = completions
+
+
+class _CloudChatShim:
+    """仅暴露 _chat_json 需要的 .chat.completions.create 接口。"""
+
+    def __init__(self, client: Any, default_max_tokens: int = 8000) -> None:
+        self.chat = _CloudChatNamespace(_CloudCompletions(client, default_max_tokens))
+
+
 class LocalLLMPlanner:
+    """作战方案规划器：优先用 config.json 的云端 API，缺失时回退本地 LLM。
+
+    T12：研究管线与前端（main_compiled.py / web_app.py）共用同一份 config.json
+    （provider / api_key / model / base_url / temperature / max_tokens）。
+    未找到可用配置时保持原有行为：走 LOCAL_LLM_BASE_URL 等环境变量连本地
+    LM Studio，因此旧用法与既有实验脚本不受影响。
+    """
+
     def __init__(self):
+        self.backend = "local"
+        self.provider = "local"
+        self.max_tokens = 8000
+
+        cloud = self._init_cloud_client()
+        if cloud is not None:
+            client, model, base_url, provider, max_tokens = cloud
+            self.client = _CloudChatShim(client, default_max_tokens=max_tokens)
+            self.model = model
+            self.base_url = base_url
+            self.provider = provider
+            self.api_key = "(from config.json)"
+            self.max_tokens = max_tokens
+            self.backend = "cloud"
+            return
+
         self.base_url = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:1234/v1")
         self.api_key = os.getenv("LOCAL_LLM_API_KEY", "lm-studio")
         self.model = os.getenv("LOCAL_LLM_MODEL", "").strip()
@@ -538,6 +713,45 @@ class LocalLLMPlanner:
         self._openai = openai
         self.client = openai.OpenAI(base_url=self.base_url, api_key=self.api_key)
         self.model = self._resolve_model()
+
+    def _init_cloud_client(self):
+        """按 config.json 建立云端客户端；不可用时返回 None 以回退本地。"""
+        cfg = load_llm_config()
+        if not cfg:
+            return None
+
+        try:
+            from llm_interface_cloud import init_cloud_client
+        except ImportError:
+            root = str(_project_root())
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            try:
+                from llm_interface_cloud import init_cloud_client
+            except ImportError:
+                return None
+
+        try:
+            provider = str(cfg.get("provider") or "deepseek").strip() or "deepseek"
+            model = str(cfg.get("model") or "").strip()
+            base_url = str(cfg.get("base_url") or "").strip()
+            max_tokens = int(cfg.get("max_tokens") or 8000)
+            client = init_cloud_client(
+                provider=provider,
+                api_key=str(cfg.get("api_key") or ""),
+                model=model,
+                base_url=base_url,
+            )
+        except Exception:
+            return None
+
+        return (
+            client,
+            str(getattr(client, "model", "") or model or "cloud-model"),
+            str(getattr(client, "base_url", "") or base_url),
+            provider,
+            max_tokens,
+        )
 
     def generate_plan(
         self,
@@ -738,8 +952,9 @@ class LocalLLMPlanner:
                 fallback_errors.append(f"fallback attempt {attempt}: {exc}")
 
         raise RuntimeError(
-            "Local LLM failed after retry/fallback. "
-            f"base_url={self.base_url}, model={self.model}, schema={schema_name}, "
+            "LLM failed after retry/fallback. "
+            f"backend={getattr(self, 'backend', 'local')}, base_url={self.base_url}, "
+            f"model={self.model}, schema={schema_name}, "
             f"json_schema_errors={schema_errors}, fallback_errors={fallback_errors}"
         )
         try:
@@ -2249,8 +2464,21 @@ class MilitaryResearchPipeline:
         return None
 
     def _collect_runtime_manifest(self) -> Dict[str, Any]:
-        model_id = os.getenv("LOCAL_LLM_MODEL", "").strip() or "unknown"
-        base_url = os.getenv("LOCAL_LLM_BASE_URL", "").strip() or "http://localhost:1234/v1"
+        cfg = load_llm_config()
+        if cfg:
+            provider = str(cfg.get("provider") or "deepseek").strip() or "deepseek"
+            default_model, default_base_url = _cloud_provider_defaults(provider)
+            model_id = str(cfg.get("model") or "").strip() or default_model
+            base_url = str(cfg.get("base_url") or "").strip() or default_base_url
+            api_mode = f"cloud-json ({provider})"
+            llm_source = "config.json"
+            max_tokens_note = str(cfg.get("max_tokens") or 8000)
+        else:
+            model_id = os.getenv("LOCAL_LLM_MODEL", "").strip() or "unknown"
+            base_url = os.getenv("LOCAL_LLM_BASE_URL", "").strip() or "http://localhost:1234/v1"
+            api_mode = "openai-compatible"
+            llm_source = "LOCAL_LLM_* environment variables"
+            max_tokens_note = "server-side default (unlimited for local endpoint)"
         cuda_available = bool(torch.cuda.is_available())
         gpu_name = self._detect_gpu_name()
         return {
@@ -2258,14 +2486,15 @@ class MilitaryResearchPipeline:
             "llm_backend": {
                 "model_id": model_id,
                 "base_url": base_url,
-                "api_mode": "openai-compatible",
+                "api_mode": api_mode,
+                "source": llm_source,
             },
             "llm_inference_params": {
                 "temperature_generation": 0.1,
                 "temperature_json_repair": 0.0,
                 "top_p": "default (1.0, not explicitly set)",
-                "max_tokens": "server-side default (unlimited for local endpoint)",
-                "response_format": "json_schema",
+                "max_tokens": max_tokens_note,
+                "response_format": "json_schema" if not cfg else "json_object (cloud generate_json)",
                 "prompt_source": "military_research/engine.py (inline, not externalized)",
             },
             "software": {
