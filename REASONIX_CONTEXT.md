@@ -3,7 +3,7 @@
 > **用途**：给未来的 AI 会话（以及我自己）一份可检索的历史上下文，避免每次重读 5 MB 会话日志。
 > **生成方式**：从 `%APPDATA%\reasonix\projects\d--研究生材料-…-antidrone_delivery\sessions\` 下的 5 条会话记录（共 ~6.5 MB）全文提炼，并与当前工作区文件系统逐项核对。
 > **核对时间点**：见文末「六、版本谱系与当前差异」——**本文件中的代码结论均以核对时的工作区实况为准，会话记录中的说法若与实况冲突，以「现状核实」一栏为准。**
-> **当前状态**：T1（源码回灌）、T2（版本控制整理）、T12（管线接入 config.json + 重编译）、**T13（手册 v4.3）**、**T14（交付包 提交版_05）** 均已落地（提交 `3e5bca4` / `1aea632` / `ec98957` / 本轮，详见「十、本轮落地记录」）；下一步优先项是 **T3**（`_02` 脚手架清理）、**T4**（`assets.txt` 解析兼容）、**T9**（README 过时）。
+> **当前状态**：T1 / T2 / T12 / T13 / T14 / **T4** 均已落地（提交 `3e5bca4` / `1aea632` / `ec98957` / `d081537` / 本轮，详见「十、本轮落地记录」）；下一步是 **T3**（`_02` 脚手架清理）与 **T9**（README 重写，仍写 `main.py` 且只提两种使用方式），之后需**重出 `提交版_05`**（把 T4/T9 的改动带进交付包，见 T15）。
 > **更新规则**：每完成一条「遗留待办」或推翻一条「已定决策」，回来改这里，不要只在对话里说。
 
 ---
@@ -74,7 +74,7 @@
 | **C6** | **多种子实验设计** | 种子 `{7, 42, 123, 999, 2024}`；固定想定/迭代/蒙特卡洛/案例库仅换种子；配对 t 检验 `df=4`、`p<0.01`、报告 Cohen's d；另有优化参数下 3 种子补充复跑 |
 | **C7** | **可复现的样本指标**（供回归比对） | 管线「反无人机蜂群防御作战」：`mission_success 0.6171` / `ler 0.773` / `completion_time_hours 12.09` / `overall_effectiveness 0.655`；基线模式 `0.5825 / 0.6297`；提交版_04 Tier1 应急预案 `0.6041`（退出码 0、零 LLM 调用）；消融结论 `ΔMS +4.47`、`ΔOE +6.83`、`ΔLER +37%`，跨场景 **5/5 全胜** |
 | **C8** | **五个泛化场景（论文 Table 6/7 为准）** | 沿海联合突击 / 城市枢纽防御 / 山地走廊侦察 / 渡河突破 / 岛屿补给走廊保障；系统想定中「兵力数量」为确定值，**具体装备清单论文未逐条给出**，汇报时须标注「示例构成」 |
-| **C9** | **资源 ID 提取是三层链路** | ① `assets.txt` 装备行 → ② `_find_resource_id()` 在装备映射表做**子串匹配**（未命中则取行首 12 字符兜底）→ ③ `_parse_actions_from_plan()` 在 LLM 方案章节中交叉匹配。**已知脆弱点见 T4** |
+| **C9** | **资源 ID 提取链路（T4 已重写）** | ① 把 assets 文本按换行与 `|` / `；` **切成一条条装备条目**（剥离 `-`/`·`/`•` 等项目符号）→ ② 对每条做**名称区最长匹配**（名称与别名同为候选，名称区=第一个括号/逗号之前），不中再退回整条文本 → ③ 仍未命中则**合成条目**：按关键词推断「探测/反制」、用型号串（如 `XJ-9`）作 `resourceId`，而**分组标题行（`探测设备：`）直接丢弃**。旧实现把「一行」当「一件装备」并用 `re.split(r'\s+\d+')` 猜名字，遇到 `|` 分隔的详细格式只能认出第一件。**同一装备在 actions 中只出现一次**（跨章节去重） |
 | **C10** | **数据库演进建议（仅设计，未实施）** | 推荐 **SQLite 单文件**（零安装、零配置、随包交付、Python 标准库自带）；表结构含 `equipment` / 案例库 / 方案产物等，装备表字段与 `equipment_library.json` 对齐（见 T5） |
 
 ---
@@ -88,7 +88,7 @@
 | **T1** | ✅ **已完成**（提交 `3e5bca4`）——把 `_02` 的最新源码与编译产物回灌仓库 | 已回灌并逐字节校验一致：`main_compiled.py`（15,779→22,567）、`web_app.py`（7,808→12,683）、`military_research_backup/{engine.py, cli.py}`、新增 `fast_pipeline.py`；`military_research/{engine,cli}.pyd` 更新 + 新增 `fast_pipeline.pyd`（与 `提交版_04` MD5 一致）；新增 `equipment_library.json`、`sit.txt`、`assets.txt`。**回归验证**：14 个模块 import OK（裸名 `.pyd` 亦可）、`--fast-first --iterations 0` 复现 `mission_success=0.6041`、前端 `--check` 5/5、`py_compile` 通过 |
 | **T2** | ✅ **已完成**（提交 `1aea632`）——版本控制范围整理 | 仓库**私有**（已确认）→ `military_research_backup/` 保持跟踪、不改写历史。`.gitignore` 新增 `_kaiti_imgs/`、`_kaiti_pdf_imgs/`、`main_blinded.pdf`、`*.cp312-win_amd64.pyd`；**取消跟踪 24 个平台标签 `.pyd`**（本地文件保留，克隆后仅裸名 `.pyd`，已验证可正常 import）；纳入手册 v4.1/v4.2、`课题背景知识文档_五场景与仿真原理.docx`、`build_knowledge_doc.py`、`add_multiseed_section.py`、`REASONIX_CONTEXT.md`。跟踪文件 71 → **58**，工作树干净 |
 | **T3** | **`_02` 里大量一次性脚手架脚本未清理**，不可进入交付包 | `patch_engine.py`、`patch_engine2.py`、`patch_return.py`、`fix_defaultdict.py`、`fix_all_defaultdict.py`、`assemble_v04.py`、`sync_v04.py`、`prep_cli.py`、`prep_recompile.py`、`check_engine.py`、`check_tier1.py`、`e2e_*.py`、`inspect_v41.py`、`update_manual_v42.py`、`verify_*.py`、`clean_sources.py` |
-| **T4** | **`assets.txt` 装备解析格式兼容未彻底解决** | 解析假设格式为 `装备名 数量`（用 `re.split(r'\s+\d+', line)[0]`）；用户实际提供的 `T1北部BC波段补盲雷达(雷达，型号：YLC-12 C波段低空补盲雷达，位置：…)` 会被切错。装备库已补 T1 系列别名（共 29 条），但**是否已改用更稳健的匹配（如「库中名称/别名子串包含」优先于分词）未见收尾验证** |
+| **T4** | ✅ **已完成**（`equipment_parser.py` 共用解析器） | 新增 `equipment_parser.py` 并把 `main_compiled.py` / `web_app.py` 的重复解析逻辑收敛进去；新增 `test_equipment_parser.py`（**22 项断言全通过**）。**实测对比**（用户真实详细格式，8 件 T1 装备）：旧逻辑只认出 3 件 + 3 条垃圾条目（`探测设备：` 等被当成装备）→ 新逻辑 9 件全中（5 探测 + 3 反制 + 1 未知装备按关键词判为反制、ID 取型号 `XJ-9`）。修掉一个连带缺陷：同一装备曾在多个章节被反复计入（`T1-NET` 出现 4 次并撞满 10 条上限，把 `T1-SPOOF`/`XJ-9` 挤掉），现按 `resourceId` 跨章节去重。真实 CLI 端到端：`actionCount=9`、唯一 9 件；简洁格式回归 5/5 |
 | **T5** | 数据库方案未落地 | 仅为 U40 的设计回答（SQLite 表结构），无代码、无迁移脚本 |
 | **T5b** | ✅ **已澄清（T2 期间确认）**：仓库为**私有**仓库 | 用户确认 `ailunyegen/antidrone_delivery` 为私有，故 `military_research_backup/` 12 个 `.py` 源码**保持跟踪、不改写历史**（e144230 无需 filter-repo）。若日后仓库转公开，必须重提本项。**注：从本机无法直连 GitHub API 核实可见性（HTTPS 443 被拦），结论依据用户确认。** |
 | **T12** | ✅ **已完成**（本轮）——管线改用 `config.json` + `CloudLLMClient`，并重编译 | 在 `engine.py` 增加 `load_llm_config()`（查找顺序：显式路径 → cwd → 项目根；api_key 支持环境变量兜底）与 `_CloudChatShim`（把 `CloudLLMClient.generate_json()` 适配成 `chat.completions.create()`，从而**不动** `_chat_json` 及下游 `DeltaRefiner`）；`LocalLLMPlanner.__init__` 先试云端、失败或无配置时**自动回退本地** `LOCAL_LLM_*`。**验证**：后端探测 `cloud / deepseek / deepseek-chat / https://api.deepseek.com/v1`；真实 API 调用返回合法 JSON；`--iterations 1 --single-candidate` 全流程走云端跑通（MS 0.6412 / LER 0.8307 / OE 0.6717，exit 0）；无 config 时回退 `local / http://localhost:1234/v1`；Tier1 零 LLM 仍为 **0.6041**；前端 `--check` 5/5；运行清单已正确记录 `api_mode=cloud-json (deepseek)`、`source=config.json` |
@@ -323,3 +323,40 @@ antidrone_delivery 提交版_05/          34 个文件
 | 前端 `main_compiled.py --check` | 5/5 ✅ |
 | 交付包自检 | 无 `config.json` / 无平台标签 `.pyd` / 无 `__pycache__` / 无 `.bak` / 无 `.c` ✅（验证后临时 config.json、`result/`、`__pycache__` 已清除） |
 | 压缩件 | `antidrone_delivery 提交版_05.rar` 1,439,566 B，`rar t` 全部正常；条目数 37 = 34 文件 + 2 目录 + 1 根条目（与 04 的 39 = 35+3+1 同构） |
+
+### 10.6 T4：装备解析重写（`equipment_parser.py`）
+
+**为什么之前只认出一件装备**：旧实现把**一个输入行**当**一件装备**，并用 `re.split(r'\s+\d+', line)[0]` 猜名字。用户真实输入把 5~8 件装备用 `|` 排在**同一行**，并带 `探测设备：` / `反制设备：` 分组标题，于是：
+
+- 整行只取第一个 `(` 之前的内容 → **只匹配到第一件**（症状：只识别出一个探测设备）；
+- 标题行与非库内装备走「合成」分支且**一律标记为探测** → 后续 actions 全是探测设备；
+- 型号里的数字（`YLC-12`）与坐标数字会参与切分，名字被切坏。
+
+**现在的实现**（`equipment_parser.py`，约 400 行，四种使用方式共用）：
+
+| 步骤 | 做法 |
+|---|---|
+| ① 切条目 | 按换行 / `|` / `｜` / `;` / `；` 切分，剥离 `-` `·` `•` `>` 等项目符号 |
+| ② 取名称区 | 第一个 `(` `（` `,` `，` `:` `：` `=` `[` 之前的部分，再剥掉尾部数量（`2部` / `x3` / `数量：2`） |
+| ③ 匹配 | 名称区对「装备库 name + aliases」做**最长匹配**（避免 `雷达` 抢先于 `低空补盲雷达`）；名称区不中再退回整条文本 |
+| ④ 合成兜底 | 未命中且非标题行时：按关键词数投票判「探测/反制」，`resourceId` 优先取**型号串**（`XJ-9`），其次压缩名称 |
+| ⑤ 丢弃 | 以 `：`/`:` 结尾的短行、`探测设备` 等分组词、无中英文数字的行 → 直接丢弃 |
+| ⑥ 装配 | 章节内每节最多认领 2 件（反制优先）；**按 resourceId 跨章节去重**；不足则先补反制、再补探测，上限 `max_actions=10` |
+
+**验收**（`test_equipment_parser.py`，22 项断言，`exit 0`）：
+
+| 用例 | 结果 |
+|---|---|
+| 详细格式 8 件 T1 装备（含 `|` 同行、括号参数、型号、坐标） | 旧逻辑 3 件 + 3 条垃圾 → **新逻辑 8/8 命中** |
+| 未知装备 `某新型便携干扰器(XJ-9，背包式，2台)` | 合成条目、`resourceId=XJ-9`、`type=反制` ✅ |
+| 分组标题行 / 空输入 | 不产生装备 ✅ |
+| 同一装备跨章节 | 只出现一次（修复 `T1-NET` 重复 4 次并挤掉其他装备的缺陷）✅ |
+| 真实 CLI 端到端 `--assets 详细格式 --output …json` | `actionCount=9`、唯一 9 件、`反制全部保留` ✅ |
+| 简洁格式（`装备名 数量`）回归 | 5/5 ✅ |
+| 边界：分号分隔 / 项目符号 / 括号内数字不误判为数量 | ✅ |
+
+**顺带修正了 C9**（资源 ID 提取链路）与文档中"旧三层链路"的描述。
+
+### 10.7 T15（新增待办）：重出 `提交版_05`
+
+`提交版_05` 是在 T4/T9 之前组装的，其 `main_compiled.py` / `web_app.py` 仍是旧解析逻辑，且缺 `equipment_parser.py`。待 T9 完成后需**重新组装 `提交版_05`**（删除旧目录与 `.rar` 后重跑 `assemble_delivery_package.ps1`，并把 `main_compiled.py`、`web_app.py`、`equipment_parser.py`、`README.md` 一并从仓库同步过去 —— 该脚本需相应扩展为「同步仓库当前文件清单」而非仅替换 engine.pyd）。

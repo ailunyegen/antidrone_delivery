@@ -56,6 +56,9 @@ if str(_HERE) not in sys.path:
 # 使用兼容性导入层（自动选择编译版或源码版）
 from core_imports import *
 
+# T4: 装备解析共用模块（assets.txt → 结构化行动 JSON）
+import equipment_parser as _equipment_parser
+
 # 兼容性处理: 如果 core_imports 未提供 CloudLLMClient，则定义一个占位类以便给出友好错误提示
 if "CloudLLMClient" not in globals():
     class CloudLLMClient:
@@ -142,92 +145,22 @@ def get_kill_chain_generation_prompt(
         "6. 风险评估与应对措施\n"
     )
 
-_equipment_library_cache = None
-
 def _load_equipment_library():
-    """从 equipment_library.json 加载装备库（带内存缓存）。"""
-    global _equipment_library_cache
-    if _equipment_library_cache is not None:
-        return _equipment_library_cache
-    import json as _json
-    _lib_path = Path(__file__).resolve().parent / "equipment_library.json"
-    if not _lib_path.exists():
-        _equipment_library_cache = []
-        return []
-    with _lib_path.open("r", encoding="utf-8") as _f:
-        _equipment_library_cache = _json.load(_f).get("equipment", [])
-    return _equipment_library_cache
+    """从 equipment_library.json 加载装备库（带内存缓存）。
 
-
-def _match_equipment(asset_line: str, library: list) -> dict | None:
-    """在装备库中匹配资产行，返回装备条目或 None。
-    支持两种格式: '装备名 数量' 和 '-位置 装备名(参数...)'
+    T4：解析逻辑已收敛到 equipment_parser 共用模块，此处保留函数名以兼容旧调用。
     """
-    line = asset_line.strip().lstrip('-').strip()
-    
-    # 提取纯装备名: 取 '(' 前的内容，去除型号/坐标等参数
-    if '(' in line:
-        name_part = line.split('(')[0].strip()
-    else:
-        name_part = line.strip()
-    
-    # 去掉可能的数量后缀
-    import re as _re
-    name_part = _re.split(r'\s+\d+', name_part)[0].strip()
-    
-    # 在库中匹配: 先精确匹配 name，再匹配 aliases
-    for entry in library:
-        if entry["name"] in name_part or name_part in entry["name"]:
-            return entry
-    for entry in library:
-        for alias in entry.get("aliases", []):
-            if alias in asset_line or alias in name_part:
-                return entry
-    
-    # 回退: 提取可读短名作为 ID
-    short_name = name_part[:20].strip()
-    if short_name:
-        return {
-            "name": short_name,
-            "aliases": [],
-            "resourceId": short_name.replace(" ", "-")[:12],
-            "type": "探测",
-            "disposalCategory": 1,
-            "disposalSubcategory": 104,
-            "dispatchMode": 1,
-        }
-    return None
+    return _equipment_parser.load_equipment_library()
+def _match_equipment(asset_line: str, library: list) -> dict | None:
+    """把单条资产条目匹配为装备库条目。
 
-
+    T4：改用共用解析器 —— 支持「装备名 数量」「-名称(雷达，型号：YLC-12，位置：…)」，
+    同一行用 `|` 分隔多条，且不会被型号里的数字/坐标带偏（最长匹配优先）。
+    """
+    return _equipment_parser.match_equipment(asset_line, library or _load_equipment_library())
 def _classify_action(text: str, equipment: dict | None = None) -> tuple:
-    """根据装备库配置分类。优先使用装备预配置值，回退到文本关键词。"""
-    if equipment and equipment.get("disposalCategory"):
-        return (
-            equipment["disposalCategory"],
-            equipment["disposalSubcategory"],
-            equipment.get("dispatchMode", 2),
-        )
-    
-    # 文本关键词回退
-    if any(kw in text for kw in ["干扰", "压制", "电子对抗", "电磁"]):
-        if any(kw in text for kw in ["GNSS欺骗", "GPS欺骗", "导航欺骗"]): return (1, 102, 1)
-        if any(kw in text for kw in ["GNSS压制", "GPS压制", "导航压制"]): return (1, 101, 1)
-        if any(kw in text for kw in ["C2", "指挥链路", "数据链"]): return (1, 100, 2)
-        if any(kw in text for kw in ["遥控", "射频"]): return (1, 103, 1)
-        if any(kw in text for kw in ["雷达"]): return (1, 104, 2)
-        return (1, 103, 2)
-    if any(kw in text for kw in ["激光"]):
-        return (2, 200, 2) if any(kw in text for kw in ["远距离", "远程"]) else (2, 201, 1)
-    if any(kw in text for kw in ["微波", "HPM", "电磁脉冲"]): return (2, 202, 2)
-    if any(kw in text for kw in ["网捕"]): return (3, 300, 3)
-    if any(kw in text for kw in ["防空导弹", "导弹拦截", "HQ-", "红旗", "SAM"]): return (4, 401, 2)
-    if any(kw in text for kw in ["高射炮", "近防炮", "CIWS", "密集阵", "弹幕"]): return (4, 400, 1)
-    if any(kw in text for kw in ["拦截无人机", "撞击", "物理撞击", "蜂群对抗"]): return (4, 400, 2)
-    if any(kw in text for kw in ["协议劫持", "链路接管"]): return (5, 500, 3)
-    if any(kw in text for kw in ["雷达", "探测", "侦察", "搜索", "预警"]): return (1, 104, 1)
-    return (1, 103, 2)
-
-
+    """处置分类：装备库预配置优先，其次按文本关键词（T4：改用共用解析器）。"""
+    return _equipment_parser.classify_action(text, equipment)
 def build_structured_plan_json(
     mission_objective: str,
     situation_description: str,
@@ -235,108 +168,18 @@ def build_structured_plan_json(
     plan_content: str,
     plan_name: str = "反无人机行动方案",
 ) -> dict:
-    """按照 conversion_result.json 骨架构建结构化方案 JSON。
-    从 equipment_library.json 加载装备库，支持 assets.txt 新旧两种格式。
+    """按 conversion_result.json 骨架构建结构化方案 JSON。
+
+    T4：解析与装配逻辑统一由 equipment_parser 提供，四种使用方式共用同一实现。
     """
-    import re as _re
-    from datetime import datetime, timezone, timedelta
-
-    library = _load_equipment_library()
-    NL = chr(10)
-    tz = timezone(timedelta(hours=8))
-    now_ts = int(datetime.now(tz).timestamp() * 1000)
-
-    # ── 解析 assets.txt，匹配装备库（按 resourceId 去重）──
-    asset_lines = [l.strip() for l in friendly_assets.splitlines() if l.strip()]
-    matched_equipment = []
-    seen_rids = set()
-    for line in asset_lines:
-        entry = _match_equipment(line, library)
-        if entry and entry["resourceId"] not in seen_rids:
-            matched_equipment.append((entry, line))
-            seen_rids.add(entry["resourceId"])
-
-    # ── 从 LLM 方案文本中提取行动 ──
-    actions = []
-    sections = _re.split(NL + r'(?=\d+\.\s)', plan_content)
-    
-    for section in sections:
-        section = section.strip()
-        if not section:
-            continue
-        
-        found_in_section = []
-        for entry, line in matched_equipment:
-            # 检查装备名或别名是否出现在此章节
-            eq_name = entry["name"]
-            if eq_name in section:
-                found_in_section.append(entry)
-                continue
-            for alias in entry.get("aliases", []):
-                if alias in section and len(alias) > 2:
-                    found_in_section.append(entry)
-                    break
-        
-        # 每个章节最多收录 2 个行动，优先反制设备
-        detectors = [e for e in found_in_section if e.get("type") == "探测"]
-        counters = [e for e in found_in_section if e.get("type") == "反制"]
-        selected = (counters + detectors)[:2]
-        
-        for entry in selected:
-            cat, subcat, mode = _classify_action(section, entry)
-            actions.append({
-                "dispatchMode": mode,
-                "disposalCategory": cat,
-                "disposalSubcategory": subcat,
-                "estimatedDuration": 30,
-                "resourceId": entry["resourceId"],
-                "startTime": 0,
-            })
-
-    # ── Fallback: 方案文本中未出现的装备，按类型补充 ──
-    existing_rids = {a["resourceId"] for a in actions}
-    # 优先补充反制设备，避免重复
-    for entry, _ in matched_equipment:
-        if entry["resourceId"] not in existing_rids and entry.get("type") == "反制":
-            cat, subcat, mode = _classify_action("", entry)
-            actions.append({
-                "dispatchMode": mode,
-                "disposalCategory": cat,
-                "disposalSubcategory": subcat,
-                "estimatedDuration": 30,
-                "resourceId": entry["resourceId"],
-                "startTime": 0,
-            })
-            existing_rids.add(entry["resourceId"])
-    # 再补充探测设备
-    for entry, _ in matched_equipment:
-        if entry["resourceId"] not in existing_rids:
-            cat, subcat, mode = _classify_action("", entry)
-            actions.append({
-                "dispatchMode": mode,
-                "disposalCategory": cat,
-                "disposalSubcategory": subcat,
-                "estimatedDuration": 30,
-                "resourceId": entry["resourceId"],
-                "startTime": 0,
-            })
-            existing_rids.add(entry["resourceId"])
-
-    # ── 填充 startTime ──
-    for i, action in enumerate(actions):
-        action["startTime"] = now_ts + i * 60000
-
-    final_actions = actions[:10]
-    return {
-        "planId": f"plan_{datetime.now(tz).strftime('%Y%m%d%H%M%S')}",
-        "planName": plan_name,
-        "targetName": "UAV无人机群",
-        "generateTime": now_ts,
-        "actionCount": len(final_actions),
-        "actions": final_actions,
-    }
-
-
+    return _equipment_parser.build_structured_plan_json(
+        mission_objective,
+        situation_description,
+        friendly_assets,
+        plan_content,
+        plan_name=plan_name,
+        library=_load_equipment_library(),
+    )
 def run_interactive(client):
     """交互式命令行模式。"""
     print("=" * 60)

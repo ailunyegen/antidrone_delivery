@@ -17,6 +17,9 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+# T4: 装备解析共用模块
+import equipment_parser as _equipment_parser
+
 try:
     from llm_interface_cloud import CloudLLMClient, list_providers, get_provider_config
     from prompt_templates import get_kill_chain_generation_prompt, build_constraints_from_app_inputs
@@ -181,99 +184,16 @@ if st.button("生成反无人机方案", type="primary", use_container_width=Tru
         mission_obj: str, situation: str, assets_txt: str,
         plan_text: str, plan_name: str,
     ) -> dict:
-        import re as _re
-        from datetime import datetime, timezone, timedelta
+        """T4：改用 equipment_parser 共用实现；装备库仍按会话缓存在 session_state。"""
         from pathlib import Path as _Path
-        tz = timezone(timedelta(hours=8))
-        now_ts = int(datetime.now(tz).timestamp() * 1000)
-        NL = chr(10)
-
-        # Load equipment library (cached via st.session_state)
         if "_eq_library" not in st.session_state:
             _lib_path = _Path(__file__).resolve().parent / "equipment_library.json"
-            if _lib_path.exists():
-                import json as _json
-                st.session_state["_eq_library"] = _json.loads(_lib_path.read_text(encoding="utf-8")).get("equipment", [])
-            else:
-                st.session_state["_eq_library"] = []
-        library = st.session_state["_eq_library"]
-
-        def _match_eq(line):
-            ln = line.strip().lstrip('-').strip()
-            if '(' in ln: ln = ln.split('(')[0].strip()
-            ln = _re.split(r'\s+\d+', ln)[0].strip()
-            for e in library:
-                if e["name"] in ln or ln in e["name"]: return e
-            for e in library:
-                for a in e.get("aliases", []):
-                    if a in line or a in ln: return e
-            return {"name": ln[:20], "aliases": [], "resourceId": ln.replace(" ","-")[:12],
-                     "type": "探测", "disposalCategory": 1, "disposalSubcategory": 104, "dispatchMode": 1}
-
-        def _classify(text, eq=None):
-            if eq and eq.get("disposalCategory"):
-                return (eq["disposalCategory"], eq["disposalSubcategory"], eq.get("dispatchMode",2))
-            if any(k in text for k in ["干扰","压制","电子对抗","电磁"]):
-                if any(k in text for k in ["GNSS欺骗","GPS欺骗","导航欺骗"]): return (1,102,1)
-                if any(k in text for k in ["GNSS压制","GPS压制","导航压制"]): return (1,101,1)
-                if any(k in text for k in ["C2","指挥链路","数据链"]): return (1,100,2)
-                if any(k in text for k in ["遥控","射频"]): return (1,103,1)
-                if any(k in text for k in ["雷达"]): return (1,104,2)
-                return (1,103,2)
-            if any(k in text for k in ["激光"]): return (2,200,2) if any(k in text for k in ["远距离","远程"]) else (2,201,1)
-            if any(k in text for k in ["微波","HPM","电磁脉冲"]): return (2,202,2)
-            if any(k in text for k in ["网捕"]): return (3,300,3)
-            if any(k in text for k in ["防空导弹","导弹拦截","HQ-","红旗","SAM"]): return (4,401,2)
-            if any(k in text for k in ["高射炮","近防炮","CIWS","密集阵","弹幕"]): return (4,400,1)
-            if any(k in text for k in ["拦截无人机","撞击","物理撞击","蜂群对抗"]): return (4,400,2)
-            if any(k in text for k in ["协议劫持","链路接管"]): return (5,500,3)
-            if any(k in text for k in ["雷达","探测","侦察","搜索","预警"]): return (1,104,1)
-            return (1,103,2)
-
-        asset_lines = [l.strip() for l in assets_txt.splitlines() if l.strip()]
-        matched = []
-        seen = set()
-        for l in asset_lines:
-            m = _match_eq(l)
-            if m and m["resourceId"] not in seen:
-                matched.append((m, l))
-                seen.add(m["resourceId"])
-
-        actions = []
-        sections = _re.split(NL + r'(?=\d+\.\s)', plan_text)
-        for section in sections:
-            if not section.strip(): continue
-            found = []
-            for entry, _ in matched:
-                if entry["name"] in section: found.append(entry); continue
-                for alias in entry.get("aliases", []):
-                    if alias in section and len(alias) > 2: found.append(entry); break
-            detectors = [e for e in found if e.get("type")=="探测"]
-            counters = [e for e in found if e.get("type")=="反制"]
-            for entry in (counters + detectors)[:2]:
-                c, s, m = _classify(section, entry)
-                actions.append({"dispatchMode":m,"disposalCategory":c,"disposalSubcategory":s,"estimatedDuration":30,"resourceId":entry["resourceId"],"startTime":0})
-
-        existing = {a["resourceId"] for a in actions}
-        for entry, _ in matched:
-            if entry["resourceId"] not in existing and entry.get("type")=="反制":
-                c,s,m = _classify("", entry)
-                actions.append({"dispatchMode":m,"disposalCategory":c,"disposalSubcategory":s,"estimatedDuration":30,"resourceId":entry["resourceId"],"startTime":0})
-                existing.add(entry["resourceId"])
-        for entry, _ in matched:
-            if entry["resourceId"] not in existing:
-                c,s,m = _classify("", entry)
-                actions.append({"dispatchMode":m,"disposalCategory":c,"disposalSubcategory":s,"estimatedDuration":30,"resourceId":entry["resourceId"],"startTime":0})
-                existing.add(entry["resourceId"])
-
-        for i, a in enumerate(actions): a["startTime"] = now_ts + i * 60000
-        final = actions[:10]
-        return {"planId": f"plan_{datetime.now(tz).strftime('%Y%m%d%H%M%S')}",
-                "planName": plan_name,
-                "targetName": "UAV无人机群",
-                "generateTime": now_ts,
-                "actionCount": len(final),
-                "actions": final}
+            st.session_state["_eq_library"] = _equipment_parser.load_equipment_library(_lib_path)
+        return _equipment_parser.build_structured_plan_json(
+            mission_obj, situation, assets_txt, plan_text,
+            plan_name=plan_name,
+            library=st.session_state["_eq_library"],
+        )
 
     json_data = _json.dumps(
         _build_structured_plan_json_web(
