@@ -3,7 +3,7 @@
 > **用途**：给未来的 AI 会话（以及我自己）一份可检索的历史上下文，避免每次重读 5 MB 会话日志。
 > **生成方式**：从 `%APPDATA%\reasonix\projects\d--研究生材料-…-antidrone_delivery\sessions\` 下的 5 条会话记录（共 ~6.5 MB）全文提炼，并与当前工作区文件系统逐项核对。
 > **核对时间点**：见文末「六、版本谱系与当前差异」——**本文件中的代码结论均以核对时的工作区实况为准，会话记录中的说法若与实况冲突，以「现状核实」一栏为准。**
-> **当前状态**：T1（源码回灌）、T2（版本控制整理）、**T12（管线接入 config.json 云端 API + 重编译）** 均已落地（提交 `3e5bca4` / `1aea632` / 本轮 T12 提交，详见「十、本轮落地记录」）；下一步优先项是 **T13**（手册 v4.3 同步）与 **T14**（出交付包 提交版_05），其次 T3/T4。
+> **当前状态**：T1（源码回灌）、T2（版本控制整理）、T12（管线接入 config.json + 重编译）、**T13（手册 v4.3）**、**T14（交付包 提交版_05）** 均已落地（提交 `3e5bca4` / `1aea632` / `ec98957` / 本轮，详见「十、本轮落地记录」）；下一步优先项是 **T3**（`_02` 脚手架清理）、**T4**（`assets.txt` 解析兼容）、**T9**（README 过时）。
 > **更新规则**：每完成一条「遗留待办」或推翻一条「已定决策」，回来改这里，不要只在对话里说。
 
 ---
@@ -92,8 +92,8 @@
 | **T5** | 数据库方案未落地 | 仅为 U40 的设计回答（SQLite 表结构），无代码、无迁移脚本 |
 | **T5b** | ✅ **已澄清（T2 期间确认）**：仓库为**私有**仓库 | 用户确认 `ailunyegen/antidrone_delivery` 为私有，故 `military_research_backup/` 12 个 `.py` 源码**保持跟踪、不改写历史**（e144230 无需 filter-repo）。若日后仓库转公开，必须重提本项。**注：从本机无法直连 GitHub API 核实可见性（HTTPS 443 被拦），结论依据用户确认。** |
 | **T12** | ✅ **已完成**（本轮）——管线改用 `config.json` + `CloudLLMClient`，并重编译 | 在 `engine.py` 增加 `load_llm_config()`（查找顺序：显式路径 → cwd → 项目根；api_key 支持环境变量兜底）与 `_CloudChatShim`（把 `CloudLLMClient.generate_json()` 适配成 `chat.completions.create()`，从而**不动** `_chat_json` 及下游 `DeltaRefiner`）；`LocalLLMPlanner.__init__` 先试云端、失败或无配置时**自动回退本地** `LOCAL_LLM_*`。**验证**：后端探测 `cloud / deepseek / deepseek-chat / https://api.deepseek.com/v1`；真实 API 调用返回合法 JSON；`--iterations 1 --single-candidate` 全流程走云端跑通（MS 0.6412 / LER 0.8307 / OE 0.6717，exit 0）；无 config 时回退 `local / http://localhost:1234/v1`；Tier1 零 LLM 仍为 **0.6041**；前端 `--check` 5/5；运行清单已正确记录 `api_mode=cloud-json (deepseek)`、`source=config.json` |
-| **T13** | **手册需随 T12 更新（v4.3）** | `用户指导手册_v4.2.docx` 的 5.4 节仍按 `LOCAL_LLM_*` 环境变量 + 本地 LM Studio 描述管线接入；T12 后管线**优先读 `config.json`**（与前端同一份），本地 LM Studio 退为回退路径。需改手册说明，并补充"无 config.json 时行为不变"的提示 |
-| **T14** | **交付包需重新出包（提交版_05）** | `提交版_04` 的 `military_research/engine.pyd` 仍是**不支持 config.json 的旧版**（871,424 B）；仓库新构建的 engine.pyd 为 947,712 B。若要给合作方带 T12 能力，需按 D7 流程出 `提交版_05`（换 engine.pyd + 更新手册） |
+| **T13** | ✅ **已完成**（手册 v4.3） | `update_manual_v43.py` 以 v4.2 为源生成 `反无人机行动方案智能生成系统_用户指导手册_v4.3.docx`（57,887 B），共 9 处修改：封面版本号、§5.4 新增「模型接入（v4.3）」段（优先 `config.json`、未配置回退 `LOCAL_LLM_*`）、§5.6 Tier1 补「无需 API Key 也不需要本地模型服务」、§6.1 说明该配置由前端与管线共用、§6.5 补管线回退用的本地模型环境变量、版本历史新增 v4.3 条、最后更新日期、附录版本表新增 v4.3 行、命令速查表新增研究管线命令。**回读校验 9/9 项命中** |
+| **T14** | ✅ **已完成**（交付包 提交版_05） | 以 `提交版_04` 为基线组装 `antidrone_delivery 提交版_05`（34 文件）+ `antidrone_delivery 提交版_05.rar`（1,439,566 B，`rar t` 全部正常）。替换 `military_research/engine.pyd`（947,712 B，支持 config.json）与手册 v4.3；清理 `__pycache__` / 历史手册 / 平台标签 `.pyd` / `.bak` / `config.json`。**包内实测**：Tier1 零 LLM `0.6041`；临时放入 config.json 后云端全流程跑通（MS 0.6394 / LER 0.8479 / OE 0.6725，`llm_backend.api_mode=cloud-json (deepseek)`、`source=config.json`）；前端 `--check` 5/5；验证后已清除临时 config.json、result/、`__pycache__` |
 
 ### 🟡 中优先（一致性与整洁）
 
@@ -122,7 +122,8 @@
 | `提交版_01`（+rar） | 旧 | 首次交付（含 API Key 残留风险期） |
 | `提交版_02.rar`（目录已删） | 旧 | JSON 导出四方式闭环（`main_compiled.py` 加 `build_plan_json()`、Web 加导出按钮） |
 | `提交版_03`（+rar） | 旧 | 装备库配置化（`equipment_library.json`）+ 手册 v4.1 + `sit.txt`/`assets.txt` |
-| **`提交版_04`（+rar）** | **最新交付** | 含 `fast_pipeline.pyd`、`cli.pyd`（6 个快速模式参数）、**手册 v4.2**、`equipment_library.json`、`sit.txt`/`assets.txt`、`环境配置指南.md` |
+| `提交版_04`（+rar） | 旧（前基线） | 含 `fast_pipeline.pyd`、`cli.pyd`（6 个快速模式参数）、手册 v4.2、`equipment_library.json`、`sit.txt`/`assets.txt`、`环境配置指南.md` |
+| **`提交版_05`（+rar）** | **最新交付（T14）** | 相对 04 的差异：`engine.pyd` 换成支持 `config.json` 的新版（947,712 B）、手册升到 **v4.3**；其余不变。已在包内实测 Tier1（0.6041）、云端全流程、前端自检 |
 
 **工作目录三处对照（T1 落地后已更新）**：
 
@@ -134,8 +135,8 @@
 | `cli.py` | ✅ 8,098 B（含 6 个快速参数） | 8,098 B（同） | `cli.pyd` 69,632 B（MD5 同） |
 | `main_compiled.py` | ✅ 22,567 B（Schema 重构后） | 22,567 B（同） | 22,567 B（同） |
 | `web_app.py` | ✅ 12,683 B | 12,683 B（同） | 12,683 B（同） |
-| `engine.pyd` / `cli.pyd` | ✅ 与 `提交版_04` **MD5 完全一致** | 同 | 同 |
-| 手册 | ✅ v3.0 / v4.0(docx+pdf) / v4.1 / **v4.2** | v4.0 / v4.1 | **v4.2** |
+| `engine.pyd` / `cli.pyd` | ✅ `engine.pyd` 947,712 B（T12 后领先交付包基线）；`cli.pyd` 与 `提交版_04` MD5 一致 | 同（engine 为旧版） | **`提交版_05`：engine 947,712 B（同仓库）** |
+| 手册 | ✅ v3.0 / v4.0(docx+pdf) / v4.1 / v4.2 / **v4.3** | v4.0 / v4.1 | 提交版_04: v4.2；**提交版_05: v4.3** |
 | `equipment_library.json` | ✅ 8,336 B（29 条，**已入库**） | ✅ 同 | ✅ 同（MD5 一致） |
 | 平台标签 `.pyd` | ⚠️ 本地保留但**已不受版本控制**（T2） | 仍保留且未忽略 | 无（交付包只留裸名） |
 
@@ -174,6 +175,8 @@
     - python 子进程的**删除操作被沙箱拒绝**（`os.remove` / `shutil.rmtree` 报 `PermissionError`，工作区内也一样），而 `build_military_pyd.py` 必须删除重建临时目录并覆盖既有 `.pyd` → 需以 `danger-full-access` 运行编译命令；
     - `TEMP` 必须指向**工作区内**目录（harness 的临时目录对 python 子进程不可写），例如 `$env:TEMP=(Join-Path (Get-Location) 'temp')`；
     - TEMP 路径一深，三个长模块名（`export_generalization_case_banks` / `summarize_generalization` / `summarize_multiseed_ablation`）就会 `LNK1104` 链接失败 → 若需整包重编，用浅层 TEMP（如 `C:\pydtmp`）。**只改 `engine.py` 时可只把该文件放进 `military_research/` 再编译，避开长名模块。**
+11. **写 `.ps1` 脚本必须存成 UTF-8 with BOM**：Windows PowerShell 5.1 对无 BOM 的 UTF-8 按 ANSI 解析，脚本里的中文（含中文文件名）会乱码并报 `Unexpected token` 语法错误。转换：`$c=Get-Content x.ps1 -Raw -Encoding UTF8; Set-Content x.ps1 -Value $c -Encoding UTF8`。
+12. **打包交付包用 WinRAR 控制台版**：`D:\Program Files\WinRAR\Rar.exe`（本机无 7-Zip）。整包重编与交付包组装都写在仓库脚本里：`build_military_pyd.py`、`assemble_delivery_package.ps1`（支持 `-Version`/`-BaseVersion` 参数复用于下一版）。
 
 ---
 
@@ -281,3 +284,42 @@ python -c "import json;print(len(json.load(open('equipment_library.json',encodin
 | 前端 `main_compiled.py --check` | 5/5 | ✅ 5/5 |
 
 **产物**：`military_research/engine.pyd` 871,424 B → **947,712 B**（平台标签镜像同步）；`military_research/engine.py` 编译后已删除，包内保持「仅 `.pyd` + `__init__.py`」的交付形态。其余 9 个未改源码的 `.pyd` 已从 git 还原（保持 `提交版_04` 同源产物），因此本次提交**只有 engine 一项二进制变化**，便于审计。
+
+### 10.5 T13 / T14：手册 v4.3 与交付包 提交版_05（本轮）
+
+**T13 — 手册 v4.3**（`update_manual_v43.py`，以 v4.2 为源，python-docx 脚本化修改，可重跑）：
+
+| # | 位置 | 修改 |
+|---|---|---|
+| 1 | 封面 | `版本： v4.2` → `v4.3` |
+| 2 | §5.4 | 新增「模型接入（v4.3）」段：管线优先读与前端同一份 `config.json`；无可用配置时回退 `LOCAL_LLM_BASE_URL / LOCAL_LLM_API_KEY / LOCAL_LLM_MODEL`（默认 `http://localhost:1234/v1`） |
+| 3 | §5.6 | Tier1 说明补「无需 API Key，也不需要本地模型服务」 |
+| 4 | §6.1 | 说明 `config.json` 由前端（命令行/Web/脚本）与管线共用 |
+| 5 | §6.5 | 补充管线回退用的本地模型环境变量（与云端 Key 环境变量相互独立） |
+| 6-8 | 版本历史 / 页脚 / 附录版本表 | 新增 v4.3 条目，更新最后更新日期，版本表在最上方插入 v4.3 行 |
+| 9 | 附录A 命令速查 | 新增研究管线命令行 |
+
+回读校验：9/9 命中（`paragraphs 349→353`，`tables 14` 不变）。**注意 python-docx 插入段落用 `deepcopy(anchor._p)` + `addnext/addprevious` 才能继承原样式；表格行需 `tbl.remove(tr)` 后 `header.addnext(tr)` 才能插到表头之后。**
+
+**T14 — 交付包 提交版_05**（`assemble_delivery_package.ps1 -Version 05 -BaseVersion 04`，脚本已参数化，下一版直接改版本号）：
+
+```
+antidrone_delivery 提交版_05/          34 个文件
+├── main_compiled.py / web_app.py / core_imports.py / run_military_research.py
+├── build_military_pyd.py / equipment_library.json / sit.txt / assets.txt
+├── config.example.json / requirements.txt / README.md / 环境配置指南.md
+├── 5 个前端 .pyd（evaluator / llm_interface_cloud / prompt_templates / scenario_builder / utils）
+├── military_research/ 13 个裸名 .pyd + __init__.py（engine.pyd = 947,712 B，支持 config.json）
+├── data/（memory_bank.jsonl 500 条 + sample_antidrone.json）
+└── 反无人机行动方案智能生成系统_用户指导手册_v4.3.docx
+```
+
+**包内实测（在交付包目录内运行，非工作区）**：
+
+| 用例 | 实测 |
+|---|---|
+| Tier1 零 LLM（无 config.json） | `mission_success 0.6041` / LER 0.7129 ✅ |
+| 临时放入 config.json 后云端全流程 | exit 0；MS 0.6394 / LER 0.8479 / OE 0.6725；`llm_backend.api_mode=cloud-json (deepseek)`、`model_id=deepseek-chat`、`source=config.json` ✅ |
+| 前端 `main_compiled.py --check` | 5/5 ✅ |
+| 交付包自检 | 无 `config.json` / 无平台标签 `.pyd` / 无 `__pycache__` / 无 `.bak` / 无 `.c` ✅（验证后临时 config.json、`result/`、`__pycache__` 已清除） |
+| 压缩件 | `antidrone_delivery 提交版_05.rar` 1,439,566 B，`rar t` 全部正常；条目数 37 = 34 文件 + 2 目录 + 1 根条目（与 04 的 39 = 35+3+1 同构） |
