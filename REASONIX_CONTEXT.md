@@ -3,6 +3,7 @@
 > **用途**：给未来的 AI 会话（以及我自己）一份可检索的历史上下文，避免每次重读 5 MB 会话日志。
 > **生成方式**：从 `%APPDATA%\reasonix\projects\d--研究生材料-…-antidrone_delivery\sessions\` 下的 5 条会话记录（共 ~6.5 MB）全文提炼，并与当前工作区文件系统逐项核对。
 > **核对时间点**：见文末「六、版本谱系与当前差异」——**本文件中的代码结论均以核对时的工作区实况为准，会话记录中的说法若与实况冲突，以「现状核实」一栏为准。**
+> **当前状态**：T1（源码回灌）、T2（版本控制整理）**已落地**（`3e5bca4` / `1aea632`，详见「十、本轮落地记录」）；下一步优先项是 **T12**（管线仍依赖本地 LM Studio）与 **T3/T4**。
 > **更新规则**：每完成一条「遗留待办」或推翻一条「已定决策」，回来改这里，不要只在对话里说。
 
 ---
@@ -49,7 +50,7 @@
 | # | 决策 | 关键细节 / 理由 |
 |---|---|---|
 | **D1** | `military_research/` 12 个模块**编译为 Cython `.pyd`（裸名，无平台标签）**交付，源码移入 `military_research_backup/` | 保护源码不直接给合作方；与原有 5 个裸名 `.pyd` 格式统一。用 `build_military_pyd.py --yes` 编译；`military_research/` 最终只留 `__init__.py` + 13 个 pyd |
-| **D2** | **研究管线的 LLM 由环境变量改为 `config.json` + `CloudLLMClient`**，与前端统一 | 原为 `LocalLLMPlanner` + `LOCAL_LLM_BASE_URL`（默认 `http://localhost:1234/v1`）读本地 LM Studio。改后四种方式共用一份配置 |
+| **D2** | **研究管线的 LLM 由环境变量改为 `config.json` + `CloudLLMClient`**，与前端统一 | 原为 `LocalLLMPlanner` + `LOCAL_LLM_BASE_URL`（默认 `http://localhost:1234/v1`）读本地 LM Studio。改后四种方式共用一份配置。**⚠️ 状态修正（本轮实测）**：该改动**只存在于当时那次会话的临时源码里，从未进入任何提交或交付产物**——扫描 `提交版_01/_03/_04`、`_02` 与当前仓库的 `engine.pyd` 二进制，`CloudLLMClient` 计数**全部为 0**，`LocalLLMPlanner` 均在。**即当前全部产物仍是「管线走本地 LM Studio、前端走 config.json」的双配置**，见 **T12** |
 | **D3** | **模型名回退必须映射到有效模型名** | `config.json` 中 `"model": ""` 曾回退为字面量 `"deepseek"` → API 报错。正确做法：空值时映射到 `deepseek-chat` / `deepseek-v4-pro` / `deepseek-v4-flash` 之类有效名 |
 | **D4** | **输出 JSON 结构以 `conversion_result.json` 为强制模板** | 顶层 6 key 固定：`planId` / `planName` / `targetName` / `generateTime` / `actionCount` / `actions`；每个 action 6 字段：`dispatchMode` / `disposalCategory` / `disposalSubcategory` / `estimatedDuration` / `resourceId` / `startTime`。**取消所有 `.txt` 输出**，四种方式统一产出该骨架 JSON。验收含 `actionCount == len(actions)` |
 | **D5** | **处置手段与行为树枚举对齐，分类改为「装备优先」** | 行为树 5 大类枚举（ElectronicJamming/DirectedEnergy/PhysicalCapture/KineticKill/ProtocolHijack）；项目补齐缺失的 **GNSSJamming(101)**；`_classify_action` 由「关键词」改为**先按装备名判定**，修掉 `JY-17B低空搜索雷达` 被误判为「遥控信号干扰(103)」的问题（现归「雷达干扰(104)」） |
@@ -84,18 +85,19 @@
 
 | # | 待办 | 现状核实 |
 |---|---|---|
-| **T1** | **工作目录落后于 `antidrone_delivery_02` 与 `提交版_04`**——git 仓库根 `antidrone_delivery` 里没有 `fast_pipeline`，`engine.py` 是旧版 | 已核实：`military_research_backup/engine.py` 155,763 B（仓库，**无** `fast_pipeline.py`）vs `_02` 159,715 B（**含** `fast_pipeline.py` 31,323 B）；`main_compiled.py` 15,779 vs 22,567；`web_app.py` 7,808 vs 12,683；`engine.pyd` / `cli.pyd` MD5 亦不同。**需决定是否把 `_02` 回灌仓库并重新提交** |
-| **T2** | **未跟踪文件需定去留**（`git status` 实测） | `equipment_library.json`、`课题背景知识文档_五场景与仿真原理.docx`、`main_blinded.pdf`、`_kaiti_imgs/`、`_kaiti_pdf_imgs/`、`build_knowledge_doc.py`、`add_multiseed_section.py` 均 untracked。**`main_blinded.pdf`（SCI 初稿，2.7 MB）是否入库需明确**（若公开仓库，建议不入） |
+| **T1** | ✅ **已完成**（提交 `3e5bca4`）——把 `_02` 的最新源码与编译产物回灌仓库 | 已回灌并逐字节校验一致：`main_compiled.py`（15,779→22,567）、`web_app.py`（7,808→12,683）、`military_research_backup/{engine.py, cli.py}`、新增 `fast_pipeline.py`；`military_research/{engine,cli}.pyd` 更新 + 新增 `fast_pipeline.pyd`（与 `提交版_04` MD5 一致）；新增 `equipment_library.json`、`sit.txt`、`assets.txt`。**回归验证**：14 个模块 import OK（裸名 `.pyd` 亦可）、`--fast-first --iterations 0` 复现 `mission_success=0.6041`、前端 `--check` 5/5、`py_compile` 通过 |
+| **T2** | ✅ **已完成**（提交 `1aea632`）——版本控制范围整理 | 仓库**私有**（已确认）→ `military_research_backup/` 保持跟踪、不改写历史。`.gitignore` 新增 `_kaiti_imgs/`、`_kaiti_pdf_imgs/`、`main_blinded.pdf`、`*.cp312-win_amd64.pyd`；**取消跟踪 24 个平台标签 `.pyd`**（本地文件保留，克隆后仅裸名 `.pyd`，已验证可正常 import）；纳入手册 v4.1/v4.2、`课题背景知识文档_五场景与仿真原理.docx`、`build_knowledge_doc.py`、`add_multiseed_section.py`、`REASONIX_CONTEXT.md`。跟踪文件 71 → **58**，工作树干净 |
 | **T3** | **`_02` 里大量一次性脚手架脚本未清理**，不可进入交付包 | `patch_engine.py`、`patch_engine2.py`、`patch_return.py`、`fix_defaultdict.py`、`fix_all_defaultdict.py`、`assemble_v04.py`、`sync_v04.py`、`prep_cli.py`、`prep_recompile.py`、`check_engine.py`、`check_tier1.py`、`e2e_*.py`、`inspect_v41.py`、`update_manual_v42.py`、`verify_*.py`、`clean_sources.py` |
 | **T4** | **`assets.txt` 装备解析格式兼容未彻底解决** | 解析假设格式为 `装备名 数量`（用 `re.split(r'\s+\d+', line)[0]`）；用户实际提供的 `T1北部BC波段补盲雷达(雷达，型号：YLC-12 C波段低空补盲雷达，位置：…)` 会被切错。装备库已补 T1 系列别名（共 29 条），但**是否已改用更稳健的匹配（如「库中名称/别名子串包含」优先于分词）未见收尾验证** |
 | **T5** | 数据库方案未落地 | 仅为 U40 的设计回答（SQLite 表结构），无代码、无迁移脚本 |
-| **T5b** | **⚠️ 公开仓库与 D1「源码不外流」冲突（已核实）** | `e144230`（已推送到 `git@github.com:ailunyegen/antidrone_delivery.git`）的 71 个受控文件中**包含 `military_research_backup/` 全部 12 个 `.py` 源码**（另有 `military_research/*.pyd`、`反无人机案例库_代表性案例抽样.xlsx`、`result_test.txt`）。若该 GitHub 仓库为 public，则 D1 的源码保护在仓库层面已失效。**需确认仓库可见性；如需保护，应 `git rm -r --cached military_research_backup` 后改写历史（filter-repo / 重新 init 推送）** |
+| **T5b** | ✅ **已澄清（T2 期间确认）**：仓库为**私有**仓库 | 用户确认 `ailunyegen/antidrone_delivery` 为私有，故 `military_research_backup/` 12 个 `.py` 源码**保持跟踪、不改写历史**（e144230 无需 filter-repo）。若日后仓库转公开，必须重提本项。**注：从本机无法直连 GitHub API 核实可见性（HTTPS 443 被拦），结论依据用户确认。** |
+| **T12** | **⚠️ 管线仍依赖本地 LM Studio（D2 未落地）** | 实测：当前全部分支的 `engine.pyd` 二进制均**只有 `LocalLLMPlanner`、无 `CloudLLMClient`**；`run_military_research.py` 默认连 `http://localhost:1234/v1`（model=`local-model`），CI/干净机器上非 Tier1 路径必然失败（实测报 `Error code: 502`）。**要点**：`--fast-first` 单独使用**仍会跑 3 轮 LLM 迭代**（`run()` 里 Tier1 只设应急预案为起点，随后 `for iteration in range(iterations)` 照跑）；**零 LLM 必须 `--fast-first --iterations 0`**（手册 v4.2 已正确写明）。**待决定**：是否把 `config.json` + `CloudLLMClient` 的改动重新应用到带 fast_pipeline 的引擎上 |
 
 ### 🟡 中优先（一致性与整洁）
 
 | # | 待办 |
 |---|---|
-| **T6** | **手册版本回同步**：工作区只有 `v3.0.docx` / `v4.0.docx` / `v4.0.pdf`；`v4.1` 在 `_02`，**`v4.2` 只在 `提交版_04`**。手册最新版应以 `提交版_04\…_v4.2.docx` 为准并回灌 |
+| **T6** | ✅ 已完成（随 T2）——手册版本回同步 | 已把 `用户指导手册_v4.1.docx`（来自 `_02`）与 **`v4.2.docx`（来自 `提交版_04`，最新）** 复制进工作区并提交；仓库现同时持有 v3.0 / v4.0(docx+pdf) / v4.1 / v4.2。已核验 v4.2 内文：Tier1/Tier2 参数、`--fast-first --iterations 0` 零 LLM 用法、`fast_pipeline.pyd` 与 `equipment_library.json` 均在手册中 |
 | **T7** | 合作方环境问题闭环确认：`DLL load failed` / `python312.dll conflicts` 是否已按 `环境配置指南.md` 解决；`config.example.json` 的内网 IP `http://10.109.6.4:1234` 已清除（现为 `base_url: ""`），需确认合作方拿到的包也是新版 |
 | **T8** | 工作区 `.reasonix/` 残留可清理：3 个 `truncated-results/*.txt` 是乱码日志（GBK/UTF-8 串码），1 个 `attachments/*.pdf` 未处理（已 gitignore，不影响仓库） |
 | **T9** | `README.md` 内容已过时：仍写 `main.py`、`python main.py --web`、目录树为 `.py` 源码版，且只提「两种使用方式」。需按 `.pyd` + 四种方式重写 |
@@ -120,20 +122,23 @@
 | `提交版_03`（+rar） | 旧 | 装备库配置化（`equipment_library.json`）+ 手册 v4.1 + `sit.txt`/`assets.txt` |
 | **`提交版_04`（+rar）** | **最新交付** | 含 `fast_pipeline.pyd`、`cli.pyd`（6 个快速模式参数）、**手册 v4.2**、`equipment_library.json`、`sit.txt`/`assets.txt`、`环境配置指南.md` |
 
-**工作目录三处对照（核实结论）**：
+**工作目录三处对照（T1 落地后已更新）**：
 
-| 项 | `antidrone_delivery`（当前工作区 / git 仓库） | `antidrone_delivery_02`（近期实际开发目录） | `提交版_04`（交付包） |
+| 项 | `antidrone_delivery`（当前工作区 / git 仓库） | `antidrone_delivery_02`（开发工作台，含脚手架） | `提交版_04`（交付包） |
 |---|---|---|---|
-| 角色 | 公开仓库 + 早期工作目录 | 开发与编译工作台（含脚手架脚本） | 干净交付包 |
-| `fast_pipeline.py` | ❌ 无 | ✅ 31,323 B | ✅ `fast_pipeline.pyd` 252,416 B |
-| `engine.py`（备份源码） | 155,763 B（旧） | 159,715 B（新） | —（仅 pyd，871,424 B） |
-| `cli.py` | 6,616 B（旧） | 8,098 B（新，含快速参数） | `cli.pyd` 69,632 B |
-| `main_compiled.py` | 15,779 B（**Schema 重构前**，函数名仍是 `build_plan_json`） | 22,567 B（重构后） | 22,567 B（同） |
-| `web_app.py` | 7,808 B | 12,683 B | 12,683 B（同） |
-| 手册 | v3.0 / v4.0 | v4.0 / v4.1 | **v4.2** |
-| `equipment_library.json` | ✅ 存在（8,336 B，29 条，untracked） | ✅ 同 | ✅ 同（MD5 一致） |
+| 角色 | ✅ **现已是唯一权威源码与产物仓库** | 开发/编译工作台（脚手架脚本待清理，T3） | 干净交付包 |
+| `fast_pipeline.py` / `.pyd` | ✅ 31,323 B / 252,416 B | ✅ 同 | ✅ `fast_pipeline.pyd` 同 |
+| `engine.py`（备份源码） | ✅ 159,715 B（新） | 159,715 B（同） | —（仅 pyd，871,424 B） |
+| `cli.py` | ✅ 8,098 B（含 6 个快速参数） | 8,098 B（同） | `cli.pyd` 69,632 B（MD5 同） |
+| `main_compiled.py` | ✅ 22,567 B（Schema 重构后） | 22,567 B（同） | 22,567 B（同） |
+| `web_app.py` | ✅ 12,683 B | 12,683 B（同） | 12,683 B（同） |
+| `engine.pyd` / `cli.pyd` | ✅ 与 `提交版_04` **MD5 完全一致** | 同 | 同 |
+| 手册 | ✅ v3.0 / v4.0(docx+pdf) / v4.1 / **v4.2** | v4.0 / v4.1 | **v4.2** |
+| `equipment_library.json` | ✅ 8,336 B（29 条，**已入库**） | ✅ 同 | ✅ 同（MD5 一致） |
+| 平台标签 `.pyd` | ⚠️ 本地保留但**已不受版本控制**（T2） | 仍保留且未忽略 | 无（交付包只留裸名） |
 
-> **一句话**：**当前 git 仓库是「Schema 重构 + 快速规划移植」之前的快照**；最新可运行成果在 `提交版_04`，最新可编译源码在 `antidrone_delivery_02`。这是 T1/T2 的根因。
+> **一句话（T1 前）**：工作区曾是「Schema 重构 + 快速规划移植」之前的快照，最新成果在 `提交版_04`、最新源码在 `_02`。
+> **一句话（T1 后）**：三者对**核心源码与编译产物已逐字节一致**，仓库可直接作为后续开发与出包的唯一基线；`_02` 退回为临时工作台（其脚手架脚本见 T3）。
 
 **`equipment_library.json` 结构**（29 条装备）：
 
@@ -207,4 +212,40 @@ foreach($l in (Get-Content -LiteralPath (Join-Path $p 'desktop-202606180329-1.js
 - **仅供虚拟场景下的方案生成与仿真评估研究**；不得用于真实作战指挥或现实行动建议（README 已声明，交付包保留）。
 - `config.json` / `.env` 含真实 API Key：**不入库、不进交付包、不写入本文档**。
 - 内网地址 `http://10.109.6.4:1234` 属开发者内网，交付前必须清除（现 `config.example.json` 已为空串）。
-- `military_research/` 源码不直接交付给合作方（D1）；但**已核实** `military_research_backup/`（12 个 `.py` 源码）**已随 `e144230` 推送到 GitHub**——若仓库公开则源码保护在仓库层面失效，见 **T5b**。
+- `military_research/` 源码不直接交付给合作方（D1）；`military_research_backup/`（12 个 `.py` 源码）**已随 `e144230` 推送到 GitHub，且仓库经确认为私有**（T2/T5b），因此保持跟踪、不改写历史。**若仓库日后转公开，必须立即处理该项。**
+
+---
+
+## 十、本轮落地记录（T1 / T2）与新增发现
+
+**执行时间**：本轮会话（`REASONIX_CONTEXT.md` 同期）。**基线**：`e144230`（初始提交）→ 落地后 `3e5bca4`（T1）→ `1aea632`（T2）。
+
+### 10.1 做了什么
+
+| 提交 | 内容 |
+|---|---|
+| `3e5bca4` **T1** | 从 `antidrone_delivery_02` 回灌：`main_compiled.py`、`web_app.py`、`military_research_backup/{engine.py, cli.py, fast_pipeline.py}`、`military_research/{engine.pyd, cli.pyd, fast_pipeline.pyd}`（+ 平台标签版）、`equipment_library.json`、`sit.txt`、`assets.txt` |
+| `1aea632` **T2** | `.gitignore` 新增 4 类忽略项；取消跟踪 24 个平台标签 `.pyd`；纳入手册 v4.1/v4.2、`课题背景知识文档_五场景与仿真原理.docx`、`build_knowledge_doc.py`、`add_multiseed_section.py`、本文件 |
+
+### 10.2 验证证据（可复跑）
+
+```powershell
+# 1) 14 个模块导入（含裸名 .pyd 场景）
+python -c "import military_research.engine, military_research.cli, military_research.fast_pipeline; print('ok')"
+# 2) Tier1 零 LLM 应急预案 —— 期望 mission_success = 0.6041（与 提交版_04 记录一致）
+python run_military_research.py --fast-first --iterations 0 --sim-runs 1 --output-dir result
+#    ⚠️ 必须带 --iterations 0，否则 Tier1 之后仍会跑默认 3 轮 LLM 迭代
+# 3) 前端模块自检 —— 期望 5/5 已编译
+python main_compiled.py --check
+# 4) 装备库 —— 期望 29 条
+python -c "import json;print(len(json.load(open('equipment_library.json',encoding='utf-8'))['equipment']))"
+```
+
+结果：① 14/14 OK（临时移开全部平台标签 `.pyd` 后仍 OK，证明**克隆后仅裸名 `.pyd` 亦可运行**）；② `0.6041`；③ 5/5；④ 29。`git status` 干净，跟踪文件 71 → 58。
+
+### 10.3 新增发现（重要）
+
+1. **D2 从未落地（T12）**：扫描 `提交版_01/_03/_04`、`_02`、当前仓库的 `engine.pyd`，`CloudLLMClient` 出现次数**全为 0**、`LocalLLMPlanner` 均存在。**结论：管线始终走本地 LM Studio（`http://localhost:1234/v1`），与前端 `config.json` 双轨并存**；干净机器上非 Tier1 路径会 `502` 失败。会话记录里 U16 那次「管线跑通（MS 0.6171）」用的临时源码版本未被任何产物继承。
+2. **Tier1 语义澄清**：`--fast-first` 只是把应急预案作为**起点**，`run()` 仍执行 `for iteration in range(iterations)`。零 LLM 需 `--fast-first --iterations 0`。**手册 v4.2 已正确写明该用法**（无需修改手册）。
+3. **仓库结构冗余已消除**：此前仓库同时跟踪裸名与平台标签 `.pyd`（24 个重复文件），现只保留裸名；`提交版_04` 亦只含裸名，两者一致。
+4. **`提交版_04` 与仓库核心产物 MD5 一致**：`engine.pyd` / `cli.pyd` / `fast_pipeline.pyd` / `equipment_library.json` / `main_compiled.py` / `web_app.py` 全部逐字节相同 —— 仓库现在是**可复现出交付包**的基线。
