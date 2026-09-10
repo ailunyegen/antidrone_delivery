@@ -3,7 +3,7 @@
 > **用途**：给未来的 AI 会话（以及我自己）一份可检索的历史上下文，避免每次重读 5 MB 会话日志。
 > **生成方式**：从 `%APPDATA%\reasonix\projects\d--研究生材料-…-antidrone_delivery\sessions\` 下的 5 条会话记录（共 ~6.5 MB）全文提炼，并与当前工作区文件系统逐项核对。
 > **核对时间点**：见文末「六、版本谱系与当前差异」——**本文件中的代码结论均以核对时的工作区实况为准，会话记录中的说法若与实况冲突，以「现状核实」一栏为准。**
-> **当前状态**：T1 / T2 / T12 / T13 / T14 / **T4** 均已落地（提交 `3e5bca4` / `1aea632` / `ec98957` / `d081537` / 本轮，详见「十、本轮落地记录」）；下一步是 **T3**（`_02` 脚手架清理）与 **T9**（README 重写，仍写 `main.py` 且只提两种使用方式），之后需**重出 `提交版_05`**（把 T4/T9 的改动带进交付包，见 T15）。
+> **当前状态**：T1 / T2 / T4 / T9 / T12 / T13 / T14 / T3 均已落地（提交 `3e5bca4` / `1aea632` / `ec98957` / `d081537` / `6f6e614` / 本轮，详见「十、本轮落地记录」）。**下一步必做 T15**：`提交版_05` 是在 T4/T9 之前组装的，需重新组装使其带上新解析器与 README。
 > **更新规则**：每完成一条「遗留待办」或推翻一条「已定决策」，回来改这里，不要只在对话里说。
 
 ---
@@ -87,7 +87,7 @@
 |---|---|---|
 | **T1** | ✅ **已完成**（提交 `3e5bca4`）——把 `_02` 的最新源码与编译产物回灌仓库 | 已回灌并逐字节校验一致：`main_compiled.py`（15,779→22,567）、`web_app.py`（7,808→12,683）、`military_research_backup/{engine.py, cli.py}`、新增 `fast_pipeline.py`；`military_research/{engine,cli}.pyd` 更新 + 新增 `fast_pipeline.pyd`（与 `提交版_04` MD5 一致）；新增 `equipment_library.json`、`sit.txt`、`assets.txt`。**回归验证**：14 个模块 import OK（裸名 `.pyd` 亦可）、`--fast-first --iterations 0` 复现 `mission_success=0.6041`、前端 `--check` 5/5、`py_compile` 通过 |
 | **T2** | ✅ **已完成**（提交 `1aea632`）——版本控制范围整理 | 仓库**私有**（已确认）→ `military_research_backup/` 保持跟踪、不改写历史。`.gitignore` 新增 `_kaiti_imgs/`、`_kaiti_pdf_imgs/`、`main_blinded.pdf`、`*.cp312-win_amd64.pyd`；**取消跟踪 24 个平台标签 `.pyd`**（本地文件保留，克隆后仅裸名 `.pyd`，已验证可正常 import）；纳入手册 v4.1/v4.2、`课题背景知识文档_五场景与仿真原理.docx`、`build_knowledge_doc.py`、`add_multiseed_section.py`、`REASONIX_CONTEXT.md`。跟踪文件 71 → **58**，工作树干净 |
-| **T3** | **`_02` 里大量一次性脚手架脚本未清理**，不可进入交付包 | `patch_engine.py`、`patch_engine2.py`、`patch_return.py`、`fix_defaultdict.py`、`fix_all_defaultdict.py`、`assemble_v04.py`、`sync_v04.py`、`prep_cli.py`、`prep_recompile.py`、`check_engine.py`、`check_tier1.py`、`e2e_*.py`、`inspect_v41.py`、`update_manual_v42.py`、`verify_*.py`、`clean_sources.py` |
+| **T3** | ✅ **已完成**（归档到 `_02\_scaffold_archive\`） | 20 个一次性脚本（`patch_*.py` / `fix_*defaultdict.py` / `prep_*.py` / `clean_sources.py` / `assemble_v04.py` / `sync_v04.py` / `check_*.py` / `verify_*.py` / `inspect_v41.py` / `e2e_*.py` / `update_manual_v42.py`）全部移入 `antidrone_delivery_02\_scaffold_archive\`，并写了 `README.md` 对照表说明「当时作用 → 现在的正式替代（`assemble_delivery_package.ps1` / `build_military_pyd.py` / `smoke_test_delivery.py` / `update_manual_v43.py`）」；`_02\__pycache__` 已删。**校验：4 个提交版目录中均无任何脚手架脚本**。`_02` 根目录现仅剩正式项目文件 |
 | **T4** | ✅ **已完成**（`equipment_parser.py` 共用解析器） | 新增 `equipment_parser.py` 并把 `main_compiled.py` / `web_app.py` 的重复解析逻辑收敛进去；新增 `test_equipment_parser.py`（**22 项断言全通过**）。**实测对比**（用户真实详细格式，8 件 T1 装备）：旧逻辑只认出 3 件 + 3 条垃圾条目（`探测设备：` 等被当成装备）→ 新逻辑 9 件全中（5 探测 + 3 反制 + 1 未知装备按关键词判为反制、ID 取型号 `XJ-9`）。修掉一个连带缺陷：同一装备曾在多个章节被反复计入（`T1-NET` 出现 4 次并撞满 10 条上限，把 `T1-SPOOF`/`XJ-9` 挤掉），现按 `resourceId` 跨章节去重。真实 CLI 端到端：`actionCount=9`、唯一 9 件；简洁格式回归 5/5 |
 | **T5** | 数据库方案未落地 | 仅为 U40 的设计回答（SQLite 表结构），无代码、无迁移脚本 |
 | **T5b** | ✅ **已澄清（T2 期间确认）**：仓库为**私有**仓库 | 用户确认 `ailunyegen/antidrone_delivery` 为私有，故 `military_research_backup/` 12 个 `.py` 源码**保持跟踪、不改写历史**（e144230 无需 filter-repo）。若日后仓库转公开，必须重提本项。**注：从本机无法直连 GitHub API 核实可见性（HTTPS 443 被拦），结论依据用户确认。** |
@@ -102,7 +102,7 @@
 | **T6** | ✅ 已完成（随 T2）——手册版本回同步 | 已把 `用户指导手册_v4.1.docx`（来自 `_02`）与 **`v4.2.docx`（来自 `提交版_04`，最新）** 复制进工作区并提交；仓库现同时持有 v3.0 / v4.0(docx+pdf) / v4.1 / v4.2。已核验 v4.2 内文：Tier1/Tier2 参数、`--fast-first --iterations 0` 零 LLM 用法、`fast_pipeline.pyd` 与 `equipment_library.json` 均在手册中 |
 | **T7** | 合作方环境问题闭环确认：`DLL load failed` / `python312.dll conflicts` 是否已按 `环境配置指南.md` 解决；`config.example.json` 的内网 IP `http://10.109.6.4:1234` 已清除（现为 `base_url: ""`），需确认合作方拿到的包也是新版 |
 | **T8** | 工作区 `.reasonix/` 残留可清理：3 个 `truncated-results/*.txt` 是乱码日志（GBK/UTF-8 串码），1 个 `attachments/*.pdf` 未处理（已 gitignore，不影响仓库） |
-| **T9** | `README.md` 内容已过时：仍写 `main.py`、`python main.py --web`、目录树为 `.py` 源码版，且只提「两种使用方式」。需按 `.pyd` + 四种方式重写 |
+| **T9** | ✅ **已完成**（README 重写） | `README.md` 由「只提两种使用方式 + `python main.py` + `.py` 源码目录树」重写为：两套子系统对照表、**四种使用方式**（含 `--fast-first --iterations 0` 等快速模式）、安装与 `config.json`/环境变量/管线回退配置、装备库与 `assets.txt` **两种格式**及解析规则、**交付包内容 vs 仅开发仓库** 两份文件结构、三条自测命令、服务商表、合规与密钥注意事项。已用脚本校验文中引用的文件路径真实存在（嵌套路径与换行书写造成的误报已排除） |
 
 ### 🟢 记录级（不影响运行）
 
@@ -357,6 +357,24 @@ antidrone_delivery 提交版_05/          34 个文件
 
 **顺带修正了 C9**（资源 ID 提取链路）与文档中"旧三层链路"的描述。
 
-### 10.7 T15（新增待办）：重出 `提交版_05`
+### 10.7 T3 / T9：脚手架归档与 README 重写
+
+**T3 — 归档 20 个一次性脚手架**（`antidrone_delivery_02\_scaffold_archive\` + 对照表 `README.md`）：
+
+| 归档脚本 | 当时作用 | 现在的正式替代 |
+|---|---|---|
+| `assemble_v04.py`、`sync_v04.py` | 手工复制/同步交付包 | `assemble_delivery_package.ps1`（参数化 + 自检 + 打包） |
+| `clean_sources.py`、`prep_cli.py`、`prep_recompile.py` | 编译前摆放/清理 `.py` | `build_military_pyd.py` + 编译后手工删 `.py` |
+| `fix_defaultdict.py`、`fix_all_defaultdict.py` | 修 Cython 类型兼容 | 修复已固化进 `military_research_backup/engine.py`（`return dict(aggregated)`） |
+| `patch_engine.py`、`patch_engine2.py`、`patch_return.py` | 给 engine 加 fast/delta、清 exporters、补返回字段 | 已固化进源码；LLM 接入部分已被 T12 重做 |
+| `check_engine.py`、`check_tier1.py`、`verify_v04.py`、`e2e_v04/sc/delta/rbr.py` | 硬编码路径、无断言的一次性探针 | `smoke_test_delivery.py`（自动选包 + 断言 + 退出码）、`test_equipment_parser.py` |
+| `inspect_v41.py`、`verify_manual.py`、`update_manual_v42.py` | 手册 v4.1→v4.2 的查看/校验/生成 | `update_manual_v43.py` |
+| 另：`_02\__pycache__` | 编译缓存 | 已删除 |
+
+**校验**：4 个交付包目录（01/03/04/05）中**均无**任何脚手架脚本；`_02` 根目录仅剩 `build_military_pyd.py`、`core_imports.py`、`main_compiled.py`、`run_military_research.py`、`web_app.py` 五个正式 `.py`。
+
+**T9 — README 重写**：见 T9 行说明。新增 `smoke_test_delivery.py`（T3 期间沉淀，取代 `_02` 里 7 个硬编码探针）；顺带把「`conversion_result.json` 骨架」的措辞改为「用户方提供的转换模板」，避免读者以为交付包里应有该文件。
+
+### 10.8 T15（新增待办，必做）：重出 `提交版_05`
 
 `提交版_05` 是在 T4/T9 之前组装的，其 `main_compiled.py` / `web_app.py` 仍是旧解析逻辑，且缺 `equipment_parser.py`。待 T9 完成后需**重新组装 `提交版_05`**（删除旧目录与 `.rar` 后重跑 `assemble_delivery_package.ps1`，并把 `main_compiled.py`、`web_app.py`、`equipment_parser.py`、`README.md` 一并从仓库同步过去 —— 该脚本需相应扩展为「同步仓库当前文件清单」而非仅替换 engine.pyd）。
