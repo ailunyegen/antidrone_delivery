@@ -3,7 +3,7 @@
 > **用途**：给未来的 AI 会话（以及我自己）一份可检索的历史上下文，避免每次重读 5 MB 会话日志。
 > **生成方式**：从 `%APPDATA%\reasonix\projects\d--研究生材料-…-antidrone_delivery\sessions\` 下的 5 条会话记录（共 ~6.5 MB）全文提炼，并与当前工作区文件系统逐项核对。
 > **核对时间点**：见文末「六、版本谱系与当前差异」——**本文件中的代码结论均以核对时的工作区实况为准，会话记录中的说法若与实况冲突，以「现状核实」一栏为准。**
-> **当前状态**：T1 / T2 / T4 / T9 / T12 / T13 / T14 / T3 均已落地（提交 `3e5bca4` / `1aea632` / `ec98957` / `d081537` / `6f6e614` / 本轮，详见「十、本轮落地记录」）。**下一步必做 T15**：`提交版_05` 是在 T4/T9 之前组装的，需重新组装使其带上新解析器与 README。
+> **当前状态**：**T1 / T2 / T3 / T4 / T9 / T12 / T13 / T14 / T15 全部完成**（提交 `3e5bca4` / `1aea632` / `ec98957` / `d081537` / `6f6e614` / `19d016d` / 本轮，详见「十、本轮落地记录」）。交付线当前最新为 **`antidrone_delivery 提交版_05`**（含 T12 云端管线 + T4 新解析器 + README + 手册 v4.3），并已通过包内冒烟测试。剩余未做项：T5（SQLite 数据库方案，仅设计）、T7（合作方环境问题闭环确认）、T8（`.reasonix/` 残留清理）、T10/T11（记录级）。
 > **更新规则**：每完成一条「遗留待办」或推翻一条「已定决策」，回来改这里，不要只在对话里说。
 
 ---
@@ -319,7 +319,7 @@ antidrone_delivery 提交版_05/          34 个文件
 | 用例 | 实测 |
 |---|---|
 | Tier1 零 LLM（无 config.json） | `mission_success 0.6041` / LER 0.7129 ✅ |
-| 临时放入 config.json 后云端全流程 | exit 0；MS 0.6394 / LER 0.8479 / OE 0.6725；`llm_backend.api_mode=cloud-json (deepseek)`、`model_id=deepseek-chat`、`source=config.json` ✅ |
+| 临时放入 config.json 后云端全流程 | exit 0；MS 0.6394 / LER 0.8479 / OE 0.6725；`runtime_manifest.llm_backend.api_mode=cloud-json (deepseek)`、`model_id=deepseek-chat`、`source=config.json`（**注意：运行清单在 `runtime_manifest` 下，不是顶层键**） ✅ |
 | 前端 `main_compiled.py --check` | 5/5 ✅ |
 | 交付包自检 | 无 `config.json` / 无平台标签 `.pyd` / 无 `__pycache__` / 无 `.bak` / 无 `.c` ✅（验证后临时 config.json、`result/`、`__pycache__` 已清除） |
 | 压缩件 | `antidrone_delivery 提交版_05.rar` 1,439,566 B，`rar t` 全部正常；条目数 37 = 34 文件 + 2 目录 + 1 根条目（与 04 的 39 = 35+3+1 同构） |
@@ -375,6 +375,26 @@ antidrone_delivery 提交版_05/          34 个文件
 
 **T9 — README 重写**：见 T9 行说明。新增 `smoke_test_delivery.py`（T3 期间沉淀，取代 `_02` 里 7 个硬编码探针）；顺带把「`conversion_result.json` 骨架」的措辞改为「用户方提供的转换模板」，避免读者以为交付包里应有该文件。
 
-### 10.8 T15（新增待办，必做）：重出 `提交版_05`
+### 10.8 T15：重出 `提交版_05`（已完成）
 
-`提交版_05` 是在 T4/T9 之前组装的，其 `main_compiled.py` / `web_app.py` 仍是旧解析逻辑，且缺 `equipment_parser.py`。待 T9 完成后需**重新组装 `提交版_05`**（删除旧目录与 `.rar` 后重跑 `assemble_delivery_package.ps1`，并把 `main_compiled.py`、`web_app.py`、`equipment_parser.py`、`README.md` 一并从仓库同步过去 —— 该脚本需相应扩展为「同步仓库当前文件清单」而非仅替换 engine.pyd）。
+**为什么必须重出**：`提交版_05` 最初是在 T4/T9 之前组装的，其 `main_compiled.py` / `web_app.py` 仍是旧解析逻辑，且缺 `equipment_parser.py`。
+
+**组装脚本升级**：`assemble_delivery_package.ps1` 从「只替换 engine.pyd + 手册」改为**从仓库同步交付清单**——13 个文本/配置文件（含 `equipment_parser.py`、`README.md`）+ 全部裸名 `.pyd`（跳过平台标签副本）+ `military_research/__init__.py` + 最新手册；清理非交付内容；**新增两道校验**：① 缺 `config.json`/平台标签 `.pyd`/缓存/中间产物/开发专用文件/`military_research_backup` 即失败；② 关键产物与仓库逐字节比对（engine/fast_pipeline/cli 的 `.pyd`、`main_compiled.py`、`web_app.py`、`equipment_parser.py`、`equipment_library.json`）。
+
+**组装结果**：`antidrone_delivery 提交版_05`（34 文件）+ `提交版_05.rar`（1,444,956 B）。同步变更：`equipment_parser.py (NEW)`、`main_compiled.py (UPDATED)`、`web_app.py (UPDATED)`、`README.md (UPDATED)`。
+
+**验收（全部在交付包目录内实测）**：
+
+| 用例 | 结果 |
+|---|---|
+| **T4 详细格式 assets**（用户真实输入，8 件 T1 + 1 件库外） | `actionCount=9`、唯一 9 件：`T1-JAM-A / T1-SPOOF / T1-SIGINT-E / T1-NET / XJ-9 / T1-RADAR-N / T1-EO-S / T1-RID-W / T1-ACOU-SE` ✅ |
+| `smoke_test_delivery.py --cloud` | **exit 0，全部 PASS**：包内容自检 6 项、Tier1 `0.6041`、前端 `--check` 5/5、云端管线 exit 0 且清单 `api_mode=cloud-json (deepseek)` ✅ |
+| `assemble_delivery_package.ps1` 自检与一致性校验 | 全部通过 ✅ |
+
+### 10.9 顺带修复的既有缺陷（较严重，值得单独记住）
+
+1. **交互模式（使用方式 5.1）保存方案时必然崩溃**：`run_interactive` 调用 `build_structured_plan_json()` 时传的是 **U26 重构时已删除的旧参数**（`hard_constraints` / `soft_constraints` / `focus` / `client` / `plan_id`）→ 生成 3 份方案后写 JSON 时 `TypeError`。此缺陷在 T4 之前就存在于所有交付包中（`提交版_01~05`），因为此前只端到端验证过脚本模式（5.3）。**已修**：改为正确签名，并顺带删除遗留的 `.txt` 输出（D4 早已要求只输出 JSON）、`output/` 目录改 `mkdir(parents=True, exist_ok=True)`。
+2. **脚本模式 `--output` 指向不存在的子目录时崩溃**：`Path(json_output).write_text()` 不创建父目录 → `FileNotFoundError`（例如 `--output result/plan.json` 且 `result/` 不存在）。**已修**：写入前 `mkdir(parents=True, exist_ok=True)`。
+3. **运行清单字段路径**：实验记录在 `full_result.json` 的 `runtime_manifest.llm_backend`（**不是顶层键**），文档与测试已按实际结构更正。
+
+**新增自测** `test_cli_interactive.py`：用桩 client + 预置 stdin 驱动 `run_interactive` 走完全程（5 个提示→3 份方案），断言顶层键/`actionCount`/装备不重复/字段数/无 `.txt`——**14 项断言全通过**（此前交互模式从未被端到端验证过）。

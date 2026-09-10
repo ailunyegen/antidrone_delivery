@@ -296,33 +296,19 @@ def run_interactive(client):
 
         print(f"\n\n  [方案{i+1}生成完毕，耗时 {elapsed:.1f} 秒，共 {len(plan)} 字符]")
 
-        # 保存方案（文本 + JSON）
+        # 保存方案（仅 JSON，与 convert 模板骨架一致）
         output_dir = _HERE / "output"
-        output_dir.mkdir(exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S")
         plan_id = f"plan_{i+1}_{ts}"
 
-        # 文本格式
-        plan_file = output_dir / f"{plan_id}.txt"
-        with plan_file.open("w", encoding="utf-8") as f:
-            f.write(f"# 方案 {i+1} (侧重点: {focus})\n")
-            f.write(f"# 生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"# 模型: {client.model}\n\n")
-            f.write(plan)
-        print(f"  已保存至: {plan_file}")
-
-        # JSON 格式
         json_file = output_dir / f"{plan_id}.json"
         plan_json = build_structured_plan_json(
             mission_objective=mission_objective,
             situation_description=situation_description,
             friendly_assets=friendly_assets,
-            hard_constraints=hard_constraints,
-            soft_constraints=soft_constraints,
-            focus=focus,
             plan_content=plan,
-            client=client,
-            plan_id=plan_id,
+            plan_name=f"{mission_objective[:20]}反无人机方案 (侧重点: {focus})",
         )
         with json_file.open("w", encoding="utf-8") as f:
             json.dump(plan_json, f, ensure_ascii=False, indent=2)
@@ -351,9 +337,7 @@ def run_single(client, mission: str, situation: str, assets: str, output: str = 
         result += chunk
 
     if output:
-        # 文本格式
-        # Text output removed — JSON only
-        # 同路径 JSON 格式
+        # 仅输出 JSON（与 conversion_result.json 骨架一致）；目录不存在时自动创建
         json_output = str(Path(output).with_suffix(".json"))
         plan_json = build_structured_plan_json(
             mission_objective=mission,
@@ -362,7 +346,10 @@ def run_single(client, mission: str, situation: str, assets: str, output: str = 
             plan_content=result,
             plan_name=mission[:20] + "反无人机方案",
         )
-        Path(json_output).write_text(
+        json_path = Path(json_output)
+        if json_path.parent and str(json_path.parent) not in ("", "."):
+            json_path.parent.mkdir(parents=True, exist_ok=True)
+        json_path.write_text(
             json.dumps(plan_json, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )

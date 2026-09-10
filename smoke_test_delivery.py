@@ -128,7 +128,9 @@ def main() -> int:
                 manifest_path = package / "result" / "smoke_cloud" / "full_result.json"
                 if manifest_path.is_file():
                     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                    backend = manifest.get("llm_backend", {})
+                    # 运行清单在 runtime_manifest.llm_backend（兼容顶层写法）
+                    backend = (manifest.get("runtime_manifest") or {}).get("llm_backend") \
+                        or manifest.get("llm_backend") or {}
                     check("cloud-json" in str(backend.get("api_mode", "")),
                           "运行清单记录 cloud-json 后端", str(backend))
                     print(f"        api_mode={backend.get('api_mode')} model={backend.get('model_id')} "
