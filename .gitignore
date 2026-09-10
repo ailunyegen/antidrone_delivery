@@ -23,6 +23,14 @@ temp/
 # 工具
 .reasonix/
 
+# 文档抽图 / 论文中间产物（本地保留，不入库）
+_kaiti_imgs/
+_kaiti_pdf_imgs/
+main_blinded.pdf
+
+# 平台标签编译产物：与裸名 .pyd 完全重复，交付包也只保留裸名（本地保留，不入库）
+*.cp312-win_amd64.pyd
+
 # 系统
 Thumbs.db
 .DS_Store
